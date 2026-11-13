@@ -95,6 +95,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     var controlsVisible by remember { mutableStateOf(true) }
     var banner by remember { mutableStateOf<String?>(null) }
     var epgNow by remember { mutableStateOf<List<EpgEntry>>(emptyList()) }
+    var epgLoading by remember { mutableStateOf(true) }
     var clock by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val client = m.client ?: return
 
@@ -102,10 +103,12 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     val liveStream = (item as? Playable.Live)?.let { it.list[it.index] }
     LaunchedEffect(liveStream?.id) {
         epgNow = emptyList()
+        epgLoading = true
         val st = liveStream ?: return@LaunchedEffect
         while (true) {
             val list = withContext(Dispatchers.IO) { try { client.epgFor(st, full = false) } catch (_: Exception) { emptyList() } }
             if (list.isNotEmpty()) epgNow = list
+            epgLoading = false
             clock = System.currentTimeMillis()
             repeat(4) { delay(15_000); clock = System.currentTimeMillis() }
         }
@@ -391,7 +394,11 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     val left = ((cur.end - now) / 60000).coerceAtLeast(0)
                     Text("Encore $left min", color = C.Dim, fontSize = 12.sp)
                 } else {
-                    Text(if (epgNow.isEmpty()) "Programme non disponible pour cette chaîne" else "—", color = C.Sub, fontSize = 14.sp)
+                    Text(
+                        when { epgLoading -> "Chargement du programme…"; epgNow.isEmpty() -> "Programme non disponible pour cette chaîne"; else -> "—" },
+                        color = C.Sub, fontSize = 14.sp
+                    )
+                    if (!epgLoading && epgNow.isEmpty()) Text(client.guideDebug(it.list[it.index]), color = C.Dim, fontSize = 11.sp, maxLines = 2)
                 }
                 if (next != null) Text("Ensuite : ${hhmm.format(Date(next.start))}  ${next.title}", color = C.Sub, fontSize = 13.sp, maxLines = 1)
             }
