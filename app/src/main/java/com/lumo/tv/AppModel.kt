@@ -450,6 +450,25 @@ class AppModel(private val context: Context) {
         } catch (_: Exception) { false }
     }
 
+    /** Arrête la lecture sur les autres écrans (TV/Fire restés allumés en arrière-plan). */
+    suspend fun stopOtherScreens(): Int {
+        val acc = store.account ?: return 0
+        if (!sync.enabled) return 0
+        val ids = withContext(Dispatchers.IO) {
+            try {
+                val o = sync.getObject("lumo/${acc.key()}/devices") ?: return@withContext emptyList<String>()
+                val now = System.currentTimeMillis()
+                o.keys().asSequence().filter { id ->
+                    val d = o.optJSONObject(id)
+                    id != store.deviceId && d != null && d.optBoolean("tv") && now - d.optLong("ts") < 2 * 86_400_000L
+                }.toList()
+            } catch (_: Exception) { emptyList() }
+        }
+        var n = 0
+        for (id in ids) if (sendCommand(id, JSONObject().put("type", "remote").put("action", "stop"))) n++
+        return n
+    }
+
     /** Sur la TV : écoute en continu les ordres envoyés par le téléphone. */
     private fun startCommandListener() {
         if (!sync.enabled) return

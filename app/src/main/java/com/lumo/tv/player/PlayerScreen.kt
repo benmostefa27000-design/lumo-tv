@@ -54,6 +54,7 @@ import com.lumo.tv.ui.IconFocus
 import com.lumo.tv.ui.LumoButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -102,6 +103,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     var useHls by remember { mutableStateOf(m.store.liveFormat == "m3u8") }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     // Écran déjà utilisé : nouvel essai automatique (la connexion précédente met parfois ~1 min à se libérer)
+    val uiScope = rememberCoroutineScope()
     var busyRetry by remember { mutableIntStateOf(0) }
     var busyCountdown by remember { mutableIntStateOf(0) }
     val errorFr = remember { androidx.compose.ui.focus.FocusRequester() }
@@ -178,10 +180,9 @@ fun PlayerScreen(m: AppModel, start: Playable) {
         m.back()
     }
 
-    // Arrière-plan : pause (sauf mini-lecteur)
-    LaunchedEffect(m.appStopped, m.pip) {
-        if (m.appStopped && !m.pip) player.pause()
-    }
+    // Arrière-plan : on coupe complètement le flux (sinon l'abonnement reste « occupé » → code 458 sur l'autre écran)
+    var stoppedInBg by remember { mutableStateOf(false) }
+    var bgPos by remember { mutableLongStateOf(0L) }
 
     fun saveProgress(finished: Boolean = false) {
         val r = resolve(item)
@@ -214,6 +215,19 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             if (prog != null && !prog.finished && prog.pos > 10_000) player.seekTo(prog.pos)
         }
         player.play()
+    }
+
+    LaunchedEffect(m.appStopped, m.pip) {
+        if (m.appStopped && !m.pip && !stoppedInBg) {
+            saveProgress()
+            bgPos = if (item is Playable.Live) 0L else player.currentPosition
+            player.stop()
+            stoppedInBg = true
+        } else if (!m.appStopped && stoppedInBg) {
+            stoppedInBg = false
+            load(item, true)
+            if (bgPos > 0) player.seekTo(bgPos)
+        }
     }
 
     // Lancement et changements (chaîne, épisode suivant)
@@ -620,6 +634,15 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     LumoButton("Réessayer", requester = errorFr) { retries = 0; busyRetry = 0; busyCountdown = 0; errorMsg = null; load(item, false) }
                     LumoButton("Retour", primary = false) { m.back() }
+                }
+                if (busyRetry > 0 && !m.isTv) {
+                    LumoButton("Couper la lecture sur la TV", primary = false) {
+                        uiScope.launch {
+                            val n = m.stopOtherScreens()
+                            m.showToast(if (n > 0) "Lecture arrêtée sur la TV, relance…" else "Aucune TV joignable")
+                            if (n > 0) { delay(4000); retries = 0; busyRetry = 0; busyCountdown = 0; errorMsg = null; load(item, false) }
+                        }
+                    }
                 }
             }
         }
