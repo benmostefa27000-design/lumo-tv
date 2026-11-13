@@ -40,11 +40,18 @@ fun SearchScreen(m: AppModel) {
     var q by remember { mutableStateOf("") }
     val fr = remember { FocusRequester() }
     LaunchedEffect(Unit) { try { fr.requestFocus() } catch (_: Exception) { } }
-    val nq = m.norm(q.trim())
-    val vodDel = m.deleted("vod"); val serDel = m.deleted("series"); val liveDel = m.deleted("live")
-    val vods = remember(nq, m.vods, vodDel) { if (nq.length < 2) emptyList() else m.vods.filter { it.catId !in vodDel && m.norm(it.name).contains(nq) }.take(60) }
-    val series = remember(nq, m.series, serDel) { if (nq.length < 2) emptyList() else m.series.filter { it.catId !in serDel && m.norm(it.name).contains(nq) }.take(60) }
-    val live = remember(nq, m.live, liveDel) { if (nq.length < 2) emptyList() else m.live.filter { it.catId !in liveDel && m.norm(it.name).contains(nq) }.take(30) }
+    var res by remember { mutableStateOf(AppModel.SearchResults()) }
+    var searching by remember { mutableStateOf(false) }
+    LaunchedEffect(q) {
+        if (q.trim().length < 2) { res = AppModel.SearchResults(); searching = false; return@LaunchedEffect }
+        searching = true
+        kotlinx.coroutines.delay(300)
+        res = m.search(q)
+        searching = false
+    }
+    val vods = res.vods
+    val series = res.series
+    val live = res.live
     val cardW = if (m.isTv) 140.dp else 108.dp
     val pad = if (m.isTv) 48.dp else 16.dp
 
@@ -58,7 +65,8 @@ fun SearchScreen(m: AppModel) {
                 modifier = Modifier.padding(horizontal = pad).fillMaxWidth().focusRequester(fr)
             )
         }
-        if (nq.length >= 2 && vods.isEmpty() && series.isEmpty() && live.isEmpty()) item { Empty("Aucun résultat pour « $q »") }
+        if (searching && vods.isEmpty() && series.isEmpty() && live.isEmpty()) item { Empty("Recherche…") }
+        else if (q.trim().length >= 2 && vods.isEmpty() && series.isEmpty() && live.isEmpty()) item { Empty("Aucun résultat pour « $q »") }
         if (vods.isNotEmpty()) item {
             CompositionLocalProvider(LocalPad provides pad) {
                 RowSection("Films") { items(vods, key = { it.id }) { v -> PosterCard(v.name, v.icon, cardW) { m.go(Screen.MovieDetail(v)) } } }

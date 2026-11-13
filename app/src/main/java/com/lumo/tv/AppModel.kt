@@ -176,6 +176,7 @@ class AppModel(private val context: Context) {
                     val l = c.liveStreams(force)
                     withContext(Dispatchers.Main) { live = l }
                 }
+                warmSearch()
             } catch (e: Exception) {
                 loadError = "Chargement impossible : ${e.message ?: "erreur réseau"}"
             } finally {
@@ -302,8 +303,38 @@ class AppModel(private val context: Context) {
 
     // ---------- Recherche ----------
 
+    private val accents = Regex("\\p{Mn}+")
+
     fun norm(s: String): String =
-        Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
+        Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD).replace(accents, "")
+
+    data class SearchResults(val vods: List<Vod> = emptyList(), val series: List<Series> = emptyList(), val live: List<LiveStream> = emptyList())
+
+    private class SearchIndex(val src: List<Any>, val vods: List<Pair<String, Vod>>, val series: List<Pair<String, Series>>, val live: List<Pair<String, LiveStream>>)
+    @Volatile private var index: SearchIndex? = null
+
+    /** Recherche hors du fil principal, sur des titres normalisés une seule fois. */
+    suspend fun search(query: String): SearchResults {
+        val v = vods; val s = series; val l = live
+        val dv = deleted("vod"); val ds = deleted("series"); val dl = deleted("live")
+        return withContext(Dispatchers.Default) {
+            val q = norm(query.trim())
+            if (q.length < 2) return@withContext SearchResults()
+            var idx = index
+            if (idx == null || idx.src[0] !== v || idx.src[1] !== s || idx.src[2] !== l) {
+                idx = SearchIndex(listOf(v, s, l), v.map { norm(it.name) to it }, s.map { norm(it.name) to it }, l.map { norm(it.name) to it })
+                index = idx
+            }
+            SearchResults(
+                vods = idx.vods.asSequence().filter { it.second.catId !in dv && it.first.contains(q) }.map { it.second }.take(60).toList(),
+                series = idx.series.asSequence().filter { it.second.catId !in ds && it.first.contains(q) }.map { it.second }.take(60).toList(),
+                live = idx.live.asSequence().filter { it.second.catId !in dl && it.first.contains(q) }.map { it.second }.take(30).toList()
+            )
+        }
+    }
+
+    /** Prépare l'index de recherche en avance, dès que le catalogue est chargé. */
+    fun warmSearch() { scope.launch { search("zz") } }
 
     // ---------- Mises à jour ----------
 
