@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -162,7 +163,7 @@ private fun Hero(m: AppModel, v: Vod) {
         t.animateFloat(
             initialValue = 1f, targetValue = 1.08f,
             animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-                androidx.compose.animation.core.tween(20_000), androidx.compose.animation.core.RepeatMode.Reverse
+                androidx.compose.animation.core.tween<Float>(20_000), androidx.compose.animation.core.RepeatMode.Reverse
             ),
             label = "heroZoom"
         ).value
