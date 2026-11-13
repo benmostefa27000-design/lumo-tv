@@ -398,7 +398,6 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                         when { epgLoading -> "Chargement du programme…"; epgNow.isEmpty() -> "Programme non disponible pour cette chaîne"; else -> "—" },
                         color = C.Sub, fontSize = 14.sp
                     )
-                    if (!epgLoading && epgNow.isEmpty()) Text(client.guideDebug(it.list[it.index]), color = C.Dim, fontSize = 11.sp, maxLines = 2)
                 }
                 if (next != null) Text("Ensuite : ${hhmm.format(Date(next.start))}  ${next.title}", color = C.Sub, fontSize = 13.sp, maxLines = 1)
             }
