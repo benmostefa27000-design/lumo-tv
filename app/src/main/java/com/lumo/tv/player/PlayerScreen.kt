@@ -59,8 +59,14 @@ import java.util.Locale
 @OptIn(UnstableApi::class)
 class ZapPlayerView(context: Context) : PlayerView(context) {
     var onZap: ((Int) -> Boolean)? = null
+    var onMenu: (() -> Unit)? = null
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val menuKey = event.keyCode in listOf(KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_SETTINGS, KeyEvent.KEYCODE_INFO)
+        val longOk = (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER) && event.repeatCount == 4
+        if (event.action == KeyEvent.ACTION_DOWN && (menuKey && event.repeatCount == 0 || longOk)) {
+            onMenu?.let { it(); return true }
+        }
         val zap = onZap
         if (zap != null && event.action == KeyEvent.ACTION_DOWN && !isControllerFullyVisible) {
             val dir = when (event.keyCode) {
@@ -95,6 +101,9 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     var busyRetry by remember { mutableIntStateOf(0) }
     var busyCountdown by remember { mutableIntStateOf(0) }
     val errorFr = remember { androidx.compose.ui.focus.FocusRequester() }
+    var panel by remember { mutableStateOf(false) }
+    val panelFr = remember { androidx.compose.ui.focus.FocusRequester() }
+    var avDelay by remember { mutableIntStateOf(0) }
     var retries by remember { mutableIntStateOf(0) }
     var controlsVisible by remember { mutableStateOf(true) }
     var banner by remember { mutableStateOf<String?>(null) }
@@ -133,7 +142,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
 
     val player = remember {
         val ds = OkHttpDataSource.Factory(m.http).setUserAgent(USER_AGENT)
-        ExoPlayer.Builder(context)
+        ExoPlayer.Builder(context, SyncRenderersFactory(context))
             .setMediaSourceFactory(DefaultMediaSourceFactory(ds))
             .build()
             .apply {
@@ -197,6 +206,23 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     }
 
     // Lancement et changements (chaîne, épisode suivant)
+    fun syncKey(p: Playable): String = when (p) {
+        is Playable.Live -> "live_" + p.list[p.index].id
+        is Playable.Replay -> "live_" + p.stream.id
+        is Playable.Movie -> "vod_" + p.vod.id
+        is Playable.Ep -> "series_" + p.series.id
+    }
+    LaunchedEffect(item) {
+        avDelay = m.store.avDelay(syncKey(item))
+        AvSync.delayMs = avDelay
+    }
+    fun setDelay(ms: Int) {
+        avDelay = ms.coerceIn(-5000, 5000)
+        AvSync.delayMs = avDelay
+        m.store.setAvDelay(syncKey(item), avDelay)
+    }
+    LaunchedEffect(panel) { if (panel) { delay(150); try { panelFr.requestFocus() } catch (_: Exception) { } } }
+
     LaunchedEffect(item, useHls) {
         val fromStart = when (val it = item) { is Playable.Movie -> it.fromStart; is Playable.Ep -> it.fromStart; else -> false }
         load(item, fromStart)
@@ -301,6 +327,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             }
         }
         onDispose {
+            AvSync.delayMs = 0
             saveProgress()
             player.removeListener(listener)
             player.release()
@@ -335,7 +362,8 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 }
             },
             update = { v ->
-                val blocked = errorMsg != null
+                val blocked = errorMsg != null || panel
+                v.onMenu = { panel = !panel }
                 v.useController = !m.pip && !blocked
                 v.isFocusable = !blocked
                 v.isFocusableInTouchMode = !blocked
@@ -369,6 +397,13 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     Text(r.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     val sub = if (item is Playable.Live && cur != null) "En direct · ${cur.title}" else r.subtitle
                     if (sub.isNotBlank()) Text(sub, color = C.Sub, fontSize = 14.sp, maxLines = 1)
+                }
+                com.lumo.tv.ui.FocusBox(shape = RoundedCornerShape(50), scale = 1.06f, onClick = { panel = !panel }) { _ ->
+                    Text(
+                        if (avDelay == 0) "Synchro son" else "Son ${if (avDelay > 0) "+" else ""}$avDelay ms",
+                        color = Color.White, fontSize = 14.sp,
+                        modifier = Modifier.background(Color(0x55FFFFFF), RoundedCornerShape(50)).padding(horizontal = 14.dp, vertical = 8.dp)
+                    )
                 }
                 val left = sleepAt?.let { ((it - clock) / 60000).coerceAtLeast(0) }
                 com.lumo.tv.ui.FocusBox(shape = RoundedCornerShape(50), scale = 1.06f, onClick = {
@@ -428,6 +463,44 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 val it = item
                 val num = if (it is Playable.Live) "${it.index + 1}/${it.list.size}  " else ""
                 Text(num + b, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        if (panel && !m.pip) {
+            Column(
+                Modifier.align(Alignment.CenterEnd).padding(24.dp).widthIn(max = 420.dp)
+                    .background(Color(0xF0141414), RoundedCornerShape(12.dp)).padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("Synchro du son", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    when {
+                        avDelay == 0 -> "Réglage d'origine"
+                        avDelay > 0 -> "Son retardé de $avDelay ms"
+                        else -> "Son avancé de ${-avDelay} ms"
+                    },
+                    color = C.Sub, fontSize = 15.sp
+                )
+                Text("Les lèvres bougent avant le son : avance le son. Le son arrive avant les lèvres : retarde-le.", color = C.Dim, fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    LumoButton("Avancer le son", requester = panelFr) { setDelay(avDelay - 100) }
+                    LumoButton("Retarder", primary = false) { setDelay(avDelay + 100) }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    LumoButton("Remettre à 0", primary = false) { setDelay(0) }
+                    LumoButton("Fermer", primary = false) { panel = false }
+                }
+                if (m.isTv) {
+                    val l = sleepAt?.let { ((it - clock) / 60000).coerceAtLeast(0) }
+                    LumoButton(if (l == null) "Minuteur : aucun" else "Minuteur : arrêt dans $l min", primary = false) {
+                        val steps = listOf<Long?>(30, 60, 90, null)
+                        val cur = l?.let { x -> steps.firstOrNull { st -> st != null && st >= x + 1 } }
+                        val idx = if (sleepAt == null) 0 else (steps.indexOf(cur) + 1).coerceAtMost(steps.lastIndex)
+                        sleepAt = steps[idx]?.let { min -> System.currentTimeMillis() + min * 60_000 }
+                        clock = System.currentTimeMillis()
+                    }
+                }
+                Text("Mémorisé pour cette chaîne, ce film ou cette série.", color = C.Dim, fontSize = 12.sp)
             }
         }
 

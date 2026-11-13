@@ -57,6 +57,14 @@ class Store(context: Context) {
         get() = prefs.getString("prefText", "") ?: ""
         set(v) { prefs.edit().putString("prefText", v).apply() }
 
+    /** Synchro du son mémorisée par chaîne / film / série (en millisecondes). */
+    fun avDelay(key: String): Int = try { JSONObject(prefs.getString("avDelay", "{}") ?: "{}").optInt(key, 0) } catch (e: Exception) { 0 }
+    fun setAvDelay(key: String, ms: Int) {
+        val o = try { JSONObject(prefs.getString("avDelay", "{}") ?: "{}") } catch (e: Exception) { JSONObject() }
+        if (ms == 0) o.remove(key) else o.put(key, ms)
+        prefs.edit().putString("avDelay", o.toString()).apply()
+    }
+
     /** Rappels d'émissions programmés sur cet appareil. */
     fun reminders(): List<JSONObject> = try {
         val a = org.json.JSONArray(prefs.getString("reminders", "[]"))
