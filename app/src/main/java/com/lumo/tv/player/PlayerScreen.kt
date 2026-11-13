@@ -583,7 +583,6 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     }
                     if (next != null) Text("Ensuite ${hhmm.format(Date(next.start))}  ${next.title}", color = C.Sub, fontSize = 11.sp, maxLines = 1)
                 } else if (epgLoading) Text("Chargement du programme…", color = C.Sub, fontSize = 11.sp)
-                if (it.list.size > 1) Text("Glisse ↑↓ sur l'image pour changer de chaîne", color = C.Dim, fontSize = 10.sp)
             }
         }
 
@@ -619,6 +618,20 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     )
                 }
                 if (next != null) Text("Ensuite : ${hhmm.format(Date(next.start))}  ${next.title}", color = C.Sub, fontSize = 13.sp, maxLines = 1)
+            }
+        }
+
+        // Téléphone : boutons chaîne précédente / suivante, qui apparaissent et s'effacent avec le bouton pause
+        if (!m.isTv && !m.pip && !chanList && !panel && errorMsg == null && uiVisible && item is Playable.Live && (item as Playable.Live).list.size > 1) {
+            listOf(-1 to Alignment.CenterStart, 1 to Alignment.CenterEnd).forEach { (dir, al) ->
+                Box(
+                    Modifier.align(al).padding(horizontal = 28.dp).size(56.dp)
+                        .background(Color(0x66000000), androidx.compose.foundation.shape.CircleShape)
+                        .clickable { zap(dir) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(if (dir < 0) "‹" else "›", color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
+                }
             }
         }
 
