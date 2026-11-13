@@ -59,6 +59,19 @@ class AppModel(private val context: Context) {
         .retryOnConnectionFailure(true)
         .build()
 
+    /** Client réservé à la vidéo : aucune connexion gardée ouverte en réserve, pour que le fournisseur
+     *  voie tout de suite que l'écran est libéré quand on arrête la lecture. */
+    val mediaHttp: OkHttpClient = http.newBuilder()
+        .dispatcher(okhttp3.Dispatcher())
+        .connectionPool(okhttp3.ConnectionPool(0, 1, TimeUnit.SECONDS))
+        .build()
+
+    /** Ferme net toutes les connexions vidéo encore ouvertes. */
+    fun closeMediaConnections() {
+        try { mediaHttp.dispatcher.cancelAll() } catch (_: Exception) { }
+        try { mediaHttp.connectionPool.evictAll() } catch (_: Exception) { }
+    }
+
     val store = Store(context)
     val sync = SyncClient(BuildConfig.SYNC_URL, http)
 

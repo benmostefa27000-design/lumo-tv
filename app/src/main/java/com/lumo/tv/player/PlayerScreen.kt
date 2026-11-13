@@ -155,7 +155,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     }
 
     val player = remember {
-        val ds = OkHttpDataSource.Factory(m.http).setUserAgent(USER_AGENT)
+        val ds = OkHttpDataSource.Factory(m.mediaHttp).setUserAgent(USER_AGENT)
         ExoPlayer.Builder(context, SyncRenderersFactory(context))
             .setMediaSourceFactory(DefaultMediaSourceFactory(ds))
             .build()
@@ -222,6 +222,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             saveProgress()
             bgPos = if (item is Playable.Live) 0L else player.currentPosition
             player.stop()
+            m.closeMediaConnections()
             stoppedInBg = true
         } else if (!m.appStopped && stoppedInBg) {
             stoppedInBg = false
@@ -388,6 +389,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             saveProgress()
             player.removeListener(listener)
             player.release()
+            m.closeMediaConnections()
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             if (!m.isTv) {
                 activity?.requestedOrientation = oldOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
