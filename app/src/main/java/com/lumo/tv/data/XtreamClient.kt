@@ -292,19 +292,17 @@ class XtreamClient(val acc: Account, private val http: OkHttpClient, private val
         parseEpg(fetch(api("get_simple_data_table", "&stream_id=$streamId")))
 
     // ---------- Guides TV complets (XMLTV) ----------
-    // 1. API du fournisseur  2. Guide public français xmltvfr.fr  3. Guide XMLTV du fournisseur
+    // 1. API du fournisseur  2. Guide public français  3. Guide arabe/algérien  4. XMLTV du fournisseur
 
     private val epgIds = HashSet<String>()
     private val liveNames = HashSet<String>()
 
     private class Guide(val map: Map<String, List<EpgEntry>>, val nameToId: Map<String, String>)
 
-    private var frGuide: Guide? = null
-    private var frFailedAt = 0L
-    private val frLock = Any()
-    private var provGuide: Guide? = null
-    private var provFailedAt = 0L
-    private val provLock = Any()
+    // Sources : 0 = guide français xmltvfr.fr, 1 = guide arabe/algérien epgshare01, 2 = XMLTV du fournisseur
+    private val guides = arrayOfNulls<Guide>(3)
+    private val guideFailedAt = LongArray(3)
+    private val guideLocks = Array(3) { Any() }
 
     /** « FR| M6 4K » → « m6 » : pour retrouver la chaîne dans un guide par son nom. */
     fun normName(raw: String): String {
@@ -313,7 +311,11 @@ class XtreamClient(val acc: Account, private val http: OkHttpClient, private val
         if (bar in 1..6) n = n.substring(bar + 1)
         n = n.replace(Regex("[\\[(].*?[\\])]"), " ")
         n = n.replace(Regex("\\b(4k|uhd|fhd|hd|sd|hevc|h265|h264|1080p?|720p?|50fps|60fps|backup|multi|vip|raw|tnt|fr)\\b"), " ")
-        return n.replace(Regex("[^a-z0-9+]"), "")
+        n = n.replace(Regex("[^a-z0-9+]"), "")
+        n = n.replace("algeria", "algerie").replace("eldjazair", "aldjazair").replace("eldjazayer", "aldjazair")
+            .replace("echourouk", "echorouk").replace("chorouk", "echorouk").replace("eechorouk", "echorouk")
+        if (n.length > 4 && n.endsWith("tv")) n = n.dropLast(2)
+        return n
     }
 
     private fun listFrom(g: Guide?, s: LiveStream): List<EpgEntry> {
@@ -335,27 +337,27 @@ class XtreamClient(val acc: Account, private val http: OkHttpClient, private val
             val table = try { fullEpg(s.id) } catch (e: Exception) { emptyList() }
             if (useful(table)) return shape(table)
         }
-        val fr = listFrom(guide(true), s)
-        if (useful(fr)) return shape(fr)
-        val prov = listFrom(guide(false), s)
-        if (useful(prov)) return shape(prov)
+        for (src in 0..2) {
+            val l = listFrom(guide(src), s)
+            if (useful(l)) return shape(l)
+        }
         return api
     }
 
-    private fun guide(french: Boolean): Guide? {
-        val lock = if (french) frLock else provLock
-        synchronized(lock) {
-            val cur = if (french) frGuide else provGuide
-            if (cur != null) return cur
-            val failedAt = if (french) frFailedAt else provFailedAt
-            if (System.currentTimeMillis() - failedAt < 10 * 60_000) return null
+    private fun guide(src: Int): Guide? {
+        synchronized(guideLocks[src]) {
+            guides[src]?.let { return it }
+            if (System.currentTimeMillis() - guideFailedAt[src] < 10 * 60_000) return null
             return try {
-                val g = if (french) loadGuide("https://xmltvfr.fr/xmltv/xmltv_fr.xml.gz", "guide_fr.xml.gz", gz = true)
-                else loadGuide("${acc.server}/xmltv.php?username=${enc(acc.user)}&password=${enc(acc.pass)}", "${acc.key()}_xmltv.xml", gz = false)
-                if (french) frGuide = g else provGuide = g
+                val g = when (src) {
+                    0 -> loadGuide("https://xmltvfr.fr/xmltv/xmltv_fr.xml.gz", "guide_fr.xml.gz", gz = true)
+                    1 -> loadGuide("https://epgshare01.online/epgshare01/epg_ripper_AE1.xml.gz", "guide_ar.xml.gz", gz = true)
+                    else -> loadGuide("${acc.server}/xmltv.php?username=${enc(acc.user)}&password=${enc(acc.pass)}", "${acc.key()}_xmltv.xml", gz = false)
+                }
+                guides[src] = g
                 g
-            } catch (e: Exception) {
-                if (french) frFailedAt = System.currentTimeMillis() else provFailedAt = System.currentTimeMillis()
+            } catch (e: Throwable) {
+                guideFailedAt[src] = System.currentTimeMillis()
                 null
             }
         }
