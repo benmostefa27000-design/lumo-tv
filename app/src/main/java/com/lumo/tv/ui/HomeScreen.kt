@@ -50,7 +50,8 @@ fun HomeScreen(m: AppModel) {
     val series = remember(m.series, serOk) { m.series.filter { it.catId in serOk } }
     val favLive = run { m.store.version; m.store.favs(m.pid, "live") }
     val liveOk = m.allowedCatIds("live")
-    val myChannels = remember(m.live, favLive, liveOk) { m.live.filter { it.id in favLive && it.catId in liveOk } }
+    val sortMode = m.liveSort
+    val myChannels = remember(m.live, favLive, liveOk, sortMode) { m.sortLive(m.live.filter { it.id in favLive && it.catId in liveOk }, sortMode) }
     // Grande affiche et « Nouveautés » : films français en priorité
     val frCats = remember(m.vodCats) {
         val fr = Regex("(^|[^a-z])(fr|vf|vff|vfq|french|france|fran[cç]ais)([^a-z]|$)", RegexOption.IGNORE_CASE)
