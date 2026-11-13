@@ -40,12 +40,18 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import com.lumo.tv.AppModel
 import com.lumo.tv.Playable
+import com.lumo.tv.data.EpgEntry
 import com.lumo.tv.data.Progress
 import com.lumo.tv.data.USER_AGENT
 import com.lumo.tv.ui.C
 import com.lumo.tv.ui.IconFocus
 import com.lumo.tv.ui.LumoButton
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /** PlayerView qui laisse changer de chaîne avec haut/bas quand les commandes sont cachées. */
 @OptIn(UnstableApi::class)
@@ -86,7 +92,22 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     var retries by remember { mutableIntStateOf(0) }
     var controlsVisible by remember { mutableStateOf(true) }
     var banner by remember { mutableStateOf<String?>(null) }
+    var epgNow by remember { mutableStateOf<List<EpgEntry>>(emptyList()) }
+    var clock by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val client = m.client ?: return
+
+    // Programme en cours de la chaîne (rafraîchi chaque minute)
+    val liveId = (item as? Playable.Live)?.let { it.list[it.index].id }
+    LaunchedEffect(liveId) {
+        epgNow = emptyList()
+        if (liveId == null) return@LaunchedEffect
+        while (true) {
+            val list = withContext(Dispatchers.IO) { try { client.shortEpg(liveId, 4) } catch (_: Exception) { emptyList() } }
+            if (list.isNotEmpty()) epgNow = list
+            clock = System.currentTimeMillis()
+            repeat(4) { delay(15_000); clock = System.currentTimeMillis() }
+        }
+    }
 
     fun resolve(p: Playable): Resolved = when (p) {
         is Playable.Live -> {
@@ -216,6 +237,10 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     }
 
     val r = resolve(item)
+    val now = clock
+    val cur = epgNow.firstOrNull { it.start <= now && it.end > now }
+    val next = epgNow.firstOrNull { it.start >= (cur?.end ?: now) }
+    val hhmm = remember { SimpleDateFormat("HH:mm", Locale.FRANCE) }
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
             factory = { ctx ->
@@ -234,6 +259,14 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 }
             },
             update = { v ->
+                val isLive = item is Playable.Live
+                v.setShowRewindButton(!isLive)
+                v.setShowFastForwardButton(!isLive)
+                val hide = if (isLive) android.view.View.GONE else android.view.View.VISIBLE
+                listOf("exo_progress", "exo_position", "exo_duration", "exo_time")
+                    .map { n -> v.resources.getIdentifier(n, "id", v.context.packageName) }
+                    .filter { id -> id != 0 }
+                    .forEach { id -> v.findViewById<android.view.View>(id)?.visibility = hide }
                 val it = item
                 v.onZap = if (it is Playable.Live && it.list.size > 1) { dir ->
                     val n = it.list.size
@@ -253,12 +286,45 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 IconFocus(Icons.AutoMirrored.Filled.ArrowBack, "Retour") { m.back() }
                 Column {
                     Text(r.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                    if (r.subtitle.isNotBlank()) Text(r.subtitle, color = C.Sub, fontSize = 14.sp, maxLines = 1)
+                    val sub = if (item is Playable.Live && cur != null) "En direct · ${cur.title}" else r.subtitle
+                    if (sub.isNotBlank()) Text(sub, color = C.Sub, fontSize = 14.sp, maxLines = 1)
                 }
             }
         }
 
-        banner?.let { b ->
+        if (item is Playable.Live && (controlsVisible || banner != null)) {
+            Column(
+                Modifier.align(Alignment.BottomStart).padding(start = 24.dp, end = 24.dp, bottom = if (controlsVisible) 72.dp else 28.dp)
+                    .widthIn(max = 640.dp).fillMaxWidth()
+                    .background(Color(0xCC000000), RoundedCornerShape(10.dp)).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                val it = item as Playable.Live
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("EN DIRECT", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.background(C.Red, RoundedCornerShape(3.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
+                    Text("${it.index + 1}/${it.list.size}  ${it.list[it.index].name}", color = C.Sub, fontSize = 13.sp, maxLines = 1)
+                }
+                if (cur != null) {
+                    Text(cur.title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 2)
+                    val frac = ((now - cur.start).toFloat() / (cur.end - cur.start)).coerceIn(0f, 1f)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(hhmm.format(Date(cur.start)), color = C.Sub, fontSize = 13.sp)
+                        Box(Modifier.weight(1f).height(4.dp).background(Color(0x55FFFFFF), RoundedCornerShape(2.dp))) {
+                            Box(Modifier.fillMaxHeight().fillMaxWidth(frac).background(C.Red, RoundedCornerShape(2.dp)))
+                        }
+                        Text(hhmm.format(Date(cur.end)), color = C.Sub, fontSize = 13.sp)
+                    }
+                    val left = ((cur.end - now) / 60000).coerceAtLeast(0)
+                    Text("Encore $left min", color = C.Dim, fontSize = 12.sp)
+                } else {
+                    Text(if (epgNow.isEmpty()) "Programme non disponible pour cette chaîne" else "—", color = C.Sub, fontSize = 14.sp)
+                }
+                if (next != null) Text("Ensuite : ${hhmm.format(Date(next.start))}  ${next.title}", color = C.Sub, fontSize = 13.sp, maxLines = 1)
+            }
+        }
+
+        if (item !is Playable.Live) banner?.let { b ->
             Box(Modifier.align(Alignment.BottomStart).padding(32.dp).background(Color(0xDD141414), RoundedCornerShape(8.dp)).padding(horizontal = 20.dp, vertical = 14.dp)) {
                 val it = item
                 val num = if (it is Playable.Live) "${it.index + 1}/${it.list.size}  " else ""
