@@ -213,15 +213,23 @@ class XtreamClient(val acc: Account, private val http: OkHttpClient, private val
         s
     }
 
+    @Volatile private var lastApiRaw = -1
+
     private fun parseEpg(s: String): List<EpgEntry> {
         val o = try { JSONObject(s) } catch (e: Exception) { return emptyList() }
         val arr = o.optJSONArray("epg_listings") ?: return emptyList()
+        val f = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).apply { timeZone = TimeZone.getTimeZone(serverTimezone) }
+        fun txt(v: String): Long = try { if (v.isBlank()) 0 else f.parse(v.trim())!!.time } catch (e: Exception) { 0 }
+        lastApiRaw = arr.length()
         return arr.objects().map {
+            val st = it.l("start_timestamp").takeIf { v -> v > 0 }?.times(1000) ?: txt(it.s("start"))
+            val en = (it.l("stop_timestamp").takeIf { v -> v > 0 } ?: it.l("end_timestamp").takeIf { v -> v > 0 })?.times(1000)
+                ?: txt(it.s("end").ifBlank { it.s("stop") })
             EpgEntry(
                 title = b64(it.s("title")).trim(),
                 desc = b64(it.s("description")).trim(),
-                start = it.l("start_timestamp") * 1000,
-                end = (it.l("stop_timestamp").takeIf { v -> v > 0 } ?: it.l("end_timestamp")) * 1000,
+                start = st,
+                end = en,
                 startRaw = it.s("start"),
                 hasArchive = it.i("has_archive") == 1
             )
@@ -294,7 +302,10 @@ class XtreamClient(val acc: Account, private val http: OkHttpClient, private val
     fun guideDebug(st: LiveStream): String {
         val map = xmltv
         val id = if (map != null) guideIdFor(st, map) else null
-        return "id guide : ${st.epgId.ifBlank { "aucun" }} · nom : ${normName(st.name)} · trouvé : ${id ?: "non"} · $guideStatus"
+        val list = if (map != null && id != null) map[id].orEmpty() else emptyList()
+        val hf = SimpleDateFormat("dd/MM HH:mm", Locale.FRANCE)
+        val range = if (list.isEmpty()) "0 prog." else "${list.size} prog. du ${hf.format(java.util.Date(list.first().start))} au ${hf.format(java.util.Date(list.last().end))}"
+        return "API : $lastApiRaw · guide : ${id ?: "non trouvé"} · $range · maintenant ${hf.format(java.util.Date())} · $guideStatus · tz $serverTimezone"
     }
 
     private fun loadXmltv(): Map<String, List<EpgEntry>> {
