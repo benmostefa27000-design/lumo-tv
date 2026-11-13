@@ -648,11 +648,11 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     LumoButton("Réessayer", requester = errorFr) { retries = 0; busyRetry = 0; busyCountdown = 0; errorMsg = null; load(item, false) }
                     LumoButton("Retour", primary = false) { m.back() }
                 }
-                if (busyRetry > 0 && !m.isTv) {
-                    LumoButton("Couper la lecture sur la TV", primary = false) {
+                if (busyRetry > 0) {
+                    LumoButton(if (m.isTv) "Couper la lecture sur le téléphone" else "Couper la lecture sur la TV", primary = false) {
                         uiScope.launch {
                             val n = m.stopOtherScreens()
-                            m.showToast(if (n > 0) "Ordre d'arrêt envoyé à la TV" else "Aucune TV trouvée")
+                            m.showToast(if (n > 0) "Ordre d'arrêt envoyé à l'autre écran" else "Aucun autre écran trouvé")
                             if (busyCountdown == 0) busyRetry++
                         }
                     }

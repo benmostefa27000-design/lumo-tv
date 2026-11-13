@@ -116,7 +116,7 @@ class AppModel(private val context: Context) {
             }
         }
         startSyncLoop()
-        if (isTv) startCommandListener()
+        startCommandListener()
         sendPendingCrash()
         checkUpdate(silent = true)
     }
@@ -460,7 +460,7 @@ class AppModel(private val context: Context) {
                 val now = System.currentTimeMillis()
                 o.keys().asSequence().filter { id ->
                     val d = o.optJSONObject(id)
-                    id != store.deviceId && d != null && d.optBoolean("tv") && now - d.optLong("ts") < 2 * 86_400_000L
+                    id != store.deviceId && d != null && now - d.optLong("ts") < 2 * 86_400_000L
                 }.toList()
             } catch (_: Exception) { emptyList() }
         }
@@ -506,7 +506,10 @@ class AppModel(private val context: Context) {
     }
 
     private fun handleCommand(c: JSONObject) {
-        c.optString("profile").takeIf { it.isNotBlank() }?.let { p ->
+        val type = c.optString("type")
+        // Le téléphone n'accepte que l'ordre « arrêter la lecture » (envoyé depuis la TV)
+        if (!isTv && !(type == "remote" && c.optString("action") == "stop")) return
+        if (type.startsWith("play_")) c.optString("profile").takeIf { it.isNotBlank() }?.let { p ->
             if (store.profiles().any { it.id == p } && !(kidsMode && store.pin().isNotEmpty())) store.profileId = p
         }
         when (c.optString("type")) {
