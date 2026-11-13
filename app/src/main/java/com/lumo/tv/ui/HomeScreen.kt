@@ -66,7 +66,10 @@ fun HomeScreen(m: AppModel) {
     val seriesById = remember(m.series) { m.series.associateBy { it.id } }
     val byCat = remember(vods) { vods.groupBy { it.catId } }
     val serByCat = remember(series) { series.groupBy { it.catId } }
-    val progress = m.progressList().filter { !it.finished }.take(30)
+    // Un seul élément par film (même titre) et par série (dernier épisode regardé)
+    val progress = m.progressList().filter { !it.finished }
+        .distinctBy { if (it.kind == "ep" && it.parentId.isNotBlank()) "s" + it.parentId else "v" + it.title.lowercase().filter { c -> c.isLetterOrDigit() } }
+        .take(30)
     val favVod = run { m.store.version; m.store.favs(m.pid, "vod") }
     val favSer = run { m.store.version; m.store.favs(m.pid, "series") }
     val hero = recentVods.firstOrNull { it.icon.isNotBlank() } ?: recentVods.firstOrNull()

@@ -312,8 +312,28 @@ class AppModel(private val context: Context) {
     }
 
     fun progressList(): List<Progress> { store.version; return store.progress(pid) }
-    fun progressFor(key: String): Progress? { store.version; return store.progressFor(pid, key) }
-    fun saveProgress(p: Progress) { commit(store.saveProgress(pid, p)) }
+    private fun normTitle(t: String) = java.text.Normalizer.normalize(t.lowercase(), java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{Mn}+"), "").replace(Regex("[^a-z0-9]"), "")
+
+    /** Même film présent deux fois chez le fournisseur (ids différents) : on prend la reprise la plus récente. */
+    fun progressFor(key: String): Progress? {
+        store.version
+        val direct = store.progressFor(pid, key)
+        if (!key.startsWith("vod_")) return direct
+        val id = key.removePrefix("vod_")
+        val title = direct?.title ?: vods.firstOrNull { it.id == id }?.name ?: return direct
+        val t = normTitle(title)
+        return store.progress(pid).firstOrNull { it.kind == "vod" && normTitle(it.title) == t } ?: direct
+    }
+
+    fun saveProgress(p: Progress) {
+        commit(store.saveProgress(pid, p))
+        if (p.kind == "vod") {
+            val t = normTitle(p.title)
+            store.progress(pid).filter { it.kind == "vod" && it.key != p.key && normTitle(it.title) == t }
+                .forEach { commit(store.removeProgress(pid, it.key)) }
+        }
+    }
     fun removeProgress(key: String) { commit(store.removeProgress(pid, key)) }
 
     suspend fun syncNow() {
