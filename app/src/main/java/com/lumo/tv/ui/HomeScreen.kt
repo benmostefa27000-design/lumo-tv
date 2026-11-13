@@ -51,7 +51,15 @@ fun HomeScreen(m: AppModel) {
     val favLive = run { m.store.version; m.store.favs(m.pid, "live") }
     val liveOk = m.allowedCatIds("live")
     val myChannels = remember(m.live, favLive, liveOk) { m.live.filter { it.id in favLive && it.catId in liveOk } }
-    val recentVods = remember(vods) { vods.sortedByDescending { it.added }.take(40) }
+    // Grande affiche et « Nouveautés » : films français en priorité
+    val frCats = remember(m.vodCats) {
+        val fr = Regex("(^|[^a-z])(fr|vf|vff|vfq|french|france|fran[cç]ais)([^a-z]|$)", RegexOption.IGNORE_CASE)
+        m.vodCats.filter { fr.containsMatchIn(it.name) }.map { it.id }.toSet()
+    }
+    val frenchRecent = remember(vods, frCats) {
+        vods.filter { it.catId in frCats || it.name.trim().startsWith("FR", ignoreCase = true) }.sortedByDescending { it.added }.take(40)
+    }
+    val recentVods = remember(vods, frenchRecent) { frenchRecent.ifEmpty { vods.sortedByDescending { it.added }.take(40) } }
     val recentSeries = remember(series) { series.sortedByDescending { it.modified }.take(40) }
     val vodsById = remember(m.vods) { m.vods.associateBy { it.id } }
     val seriesById = remember(m.series) { m.series.associateBy { it.id } }
