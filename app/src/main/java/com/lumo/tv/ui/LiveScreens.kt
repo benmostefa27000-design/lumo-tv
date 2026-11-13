@@ -50,20 +50,26 @@ fun LiveScreen(m: AppModel) {
     val favs = run { m.store.version; m.store.favs(m.pid, "live") }
     var sel by remember { mutableStateOf(if (favs.isNotEmpty()) FAV else (cats.firstOrNull()?.id ?: ALL)) }
     val visibleIds = remember(cats) { cats.map { it.id }.toSet() }
-    val list = remember(sel, m.live, visibleIds, favs) {
-        when (sel) {
+    val sortMode = m.liveSort
+    val list = remember(sel, m.live, visibleIds, favs, sortMode) {
+        val raw = when (sel) {
             FAV -> m.live.filter { it.id in favs }
             ALL -> m.live.filter { it.catId in visibleIds }
             REPLAY -> m.live.filter { it.archive && it.catId in visibleIds }
             else -> m.live.filter { it.catId == sel }
         }
+        m.sortLive(raw, sortMode)
     }
+    val sortLabels = linkedMapOf("tnt" to "Ordre TNT", "watched" to "Plus regardées", "az" to "A-Z", "num" to "Numéro")
+    val nextSort = { val keys = sortLabels.keys.toList(); m.setLiveSort(keys[(keys.indexOf(sortMode) + 1) % keys.size]) }
+    val sortLabel = "⇅ " + (sortLabels[sortMode] ?: "Ordre TNT")
     val hasReplay = remember(m.live, visibleIds) { m.live.any { it.archive && it.catId in visibleIds } }
     val catItems = listOf(FAV to "★ Favoris") + (if (hasReplay) listOf(REPLAY to "⟲ Rattrapage") else emptyList()) + cats.map { it.id to it.name }
 
     if (m.isTv) {
         Row(Modifier.fillMaxSize().padding(start = 40.dp, end = 40.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             LazyColumn(Modifier.width(250.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+                item(key = "__sort") { Chip(sortLabel, false) { nextSort() } }
                 items(catItems, key = { it.first }) { (id, name) ->
                     FocusBox(modifier = Modifier.fillMaxWidth(), scale = 1.03f, onClick = { sel = id }) { f ->
                         Text(
@@ -81,6 +87,7 @@ fun LiveScreen(m: AppModel) {
     } else {
         Column(Modifier.fillMaxSize()) {
             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item(key = "__sort") { Chip(sortLabel, false) { nextSort() } }
                 items(catItems, key = { it.first }) { (id, name) -> Chip(name, sel == id) { sel = id } }
             }
             ChannelList(m, list, Modifier.weight(1f).padding(horizontal = 12.dp))

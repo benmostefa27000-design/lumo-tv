@@ -215,6 +215,39 @@ class AppModel(private val context: Context) {
         }
     }
 
+    // ---------- Ordre des chaînes ----------
+
+    /** Numérotation TNT (depuis le 6 juin 2025), puis quelques chaînes Canal+ et payantes. */
+    private val tntOrder: Map<String, Int> = mapOf(
+        "tf1" to 1, "france2" to 2, "france3" to 3, "france4" to 4, "france5" to 5, "m6" to 6, "arte" to 7,
+        "lcp" to 8, "publicsenat" to 8, "lcppublicsenat" to 8, "lachaineparlementaire" to 8, "w9" to 9, "tmc" to 10,
+        "tfx" to 11, "gulli" to 12, "bfmtv" to 13, "bfm" to 13, "cnews" to 14, "lci" to 15, "franceinfo" to 16,
+        "cstar" to 17, "t18" to 18, "novo19" to 19, "tf1seriesfilms" to 20, "tf1series" to 20, "tf1seriefilms" to 20,
+        "lequipe" to 21, "lequipe21" to 21, "6ter" to 22, "rmcstory" to 23, "rmcdecouverte" to 24, "cherie25" to 25,
+        "canal+" to 26, "canalplus" to 26, "canal+cinema" to 27, "canal+cinemas" to 27, "canal+sport" to 28, "canal+foot" to 29,
+        "canal+series" to 30, "canal+docs" to 31, "canal+kids" to 32, "c8" to 33, "nrj12" to 34, "parispremiere" to 35
+    )
+
+    fun tntRank(s: LiveStream): Int {
+        val n = client?.normName(s.name) ?: return 999
+        tntOrder[n]?.let { return it }
+        if (n.startsWith("france3")) return 3
+        return 999
+    }
+
+    val liveSort: String get() { store.version; return store.liveSort() }
+    fun setLiveSort(mode: String) { commit(store.setLiveSort(mode)) }
+
+    fun sortLive(list: List<LiveStream>, mode: String): List<LiveStream> = when (mode) {
+        "az" -> list.sortedBy { norm(it.name.substringAfter('|').trim()) }
+        "num" -> list.sortedBy { if (it.num > 0) it.num else Int.MAX_VALUE }
+        "watched" -> {
+            val w = store.watchCounts(pid)
+            list.sortedWith(compareByDescending<LiveStream> { w[it.id] ?: 0 }.thenBy { tntRank(it) })
+        }
+        else -> list.sortedBy { tntRank(it) }
+    }
+
     // ---------- Profil courant ----------
 
     val profile: Profile?

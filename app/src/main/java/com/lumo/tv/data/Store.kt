@@ -110,6 +110,30 @@ class Store(context: Context) {
         return Change("cats", JSONObject(c.toString()))
     }
 
+    // ---------- Réglages partagés (tri des chaînes…) ----------
+
+    fun liveSort(): String = doc.optJSONObject("settings")?.optString("liveSort")?.ifBlank { null } ?: "tnt"
+
+    fun setLiveSort(mode: String): Change {
+        val sec = obj(doc, "settings")
+        sec.put("liveSort", mode)
+        sec.put("ts", now())
+        save()
+        return Change("settings", JSONObject(sec.toString()))
+    }
+
+    /** Nombre de lancements par chaîne (sur cet appareil, par profil) pour « Les plus regardées ». */
+    fun watchCounts(pid: String): Map<String, Int> = try {
+        val o = JSONObject(prefs.getString("watch_$pid", "{}") ?: "{}")
+        o.keys().asSequence().associateWith { o.optInt(it) }
+    } catch (e: Exception) { emptyMap() }
+
+    fun addWatch(pid: String, streamId: String) {
+        val o = try { JSONObject(prefs.getString("watch_$pid", "{}") ?: "{}") } catch (e: Exception) { JSONObject() }
+        o.put(streamId, o.optInt(streamId) + 1)
+        prefs.edit().putString("watch_$pid", o.toString()).apply()
+    }
+
     // ---------- Profils ----------
 
     fun profiles(): List<Profile> {
@@ -215,6 +239,7 @@ class Store(context: Context) {
 
         lww("cats", doc.optJSONObject("cats"), remote.optJSONObject("cats")) { doc.put("cats", it) }
         lww("profiles", doc.optJSONObject("profiles"), remote.optJSONObject("profiles")) { doc.put("profiles", it) }
+        lww("settings", doc.optJSONObject("settings"), remote.optJSONObject("settings")) { doc.put("settings", it) }
 
         val rp = remote.optJSONObject("p") ?: JSONObject()
         val lp = obj(doc, "p")

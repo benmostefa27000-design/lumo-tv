@@ -224,6 +224,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
         is Playable.Ep -> "series_" + p.series.id
     }
     LaunchedEffect(item) {
+        (item as? Playable.Live)?.let { m.store.addWatch(m.pid, it.list[it.index].id) }
         avDelay = m.store.avDelay(syncKey(item))
         AvSync.delayMs = avDelay
     }
