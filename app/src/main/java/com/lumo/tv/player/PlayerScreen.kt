@@ -18,6 +18,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -106,6 +110,13 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     var avDelay by remember { mutableIntStateOf(0) }
     var retries by remember { mutableIntStateOf(0) }
     var controlsVisible by remember { mutableStateOf(true) }
+    // TV : commandes maison pilotées par la télécommande
+    var showUi by remember { mutableStateOf(true) }
+    var uiTick by remember { mutableIntStateOf(0) }
+    var paused by remember { mutableStateOf(false) }
+    var posMs by remember { mutableLongStateOf(0L) }
+    var durMs by remember { mutableLongStateOf(0L) }
+    val rootFr = remember { androidx.compose.ui.focus.FocusRequester() }
     var banner by remember { mutableStateOf<String?>(null) }
     var epgNow by remember { mutableStateOf<List<EpgEntry>>(emptyList()) }
     var epgLoading by remember { mutableStateOf(true) }
@@ -223,6 +234,21 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     }
     LaunchedEffect(panel) { if (panel) { delay(150); try { panelFr.requestFocus() } catch (_: Exception) { } } }
 
+    androidx.activity.compose.BackHandler(enabled = panel) { panel = false }
+
+    // TV : masquer l'affichage après quelques secondes (sauf en pause)
+    LaunchedEffect(uiTick, paused, panel, errorMsg) {
+        if (m.isTv && !paused && !panel && errorMsg == null) { delay(4500); showUi = false }
+    }
+    // TV : position du film rafraîchie quand l'affichage est visible
+    LaunchedEffect(showUi) {
+        while (m.isTv && showUi) { posMs = player.currentPosition; durMs = player.duration.coerceAtLeast(0); delay(1000) }
+    }
+    // TV : la télécommande revient sur la vidéo quand un panneau se ferme
+    LaunchedEffect(panel, errorMsg) {
+        if (m.isTv && !panel && errorMsg == null) { delay(120); try { rootFr.requestFocus() } catch (_: Exception) { } }
+    }
+
     LaunchedEffect(item, useHls) {
         val fromStart = when (val it = item) { is Playable.Movie -> it.fromStart; is Playable.Ep -> it.fromStart; else -> false }
         load(item, fromStart)
@@ -270,6 +296,10 @@ fun PlayerScreen(m: AppModel, start: Playable) {
 
     DisposableEffect(Unit) {
         val listener = object : Player.Listener {
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                paused = !playWhenReady
+            }
+
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_READY) { retries = 0; busyRetry = 0; busyCountdown = 0 }
                 if (state == Player.STATE_ENDED) {
@@ -344,7 +374,52 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     val cur = epgNow.firstOrNull { it.start <= now && it.end > now }
     val next = epgNow.firstOrNull { it.start >= (cur?.end ?: now) }
     val hhmm = remember { SimpleDateFormat("HH:mm", Locale.FRANCE) }
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    val uiVisible = if (m.isTv) showUi else controlsVisible
+
+    fun poke() { showUi = true; uiTick++ }
+    fun zap(dir: Int): Boolean {
+        val it = item
+        if (it !is Playable.Live || it.list.size < 2) return false
+        val n = it.list.size
+        item = it.copy(index = ((it.index + dir) % n + n) % n)
+        poke()
+        return true
+    }
+    fun seekBy(ms: Long) {
+        player.seekTo((player.currentPosition + ms).coerceAtLeast(0))
+        posMs = player.currentPosition
+        poke()
+    }
+    fun tvKey(e: androidx.compose.ui.input.key.KeyEvent): Boolean {
+        if (!m.isTv || panel || errorMsg != null) return false
+        if (e.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return false
+        val live = item is Playable.Live
+        return when (e.nativeKeyEvent.keyCode) {
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_SPACE -> {
+                if (e.nativeKeyEvent.repeatCount > 0) { if (e.nativeKeyEvent.repeatCount == 4) panel = true; true }
+                else { if (player.playWhenReady) player.pause() else player.play(); poke(); true }
+            }
+            KeyEvent.KEYCODE_MEDIA_PLAY -> { player.play(); poke(); true }
+            KeyEvent.KEYCODE_MEDIA_PAUSE -> { player.pause(); poke(); true }
+            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP -> { if (!(live && zap(-1))) poke(); true }
+            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN -> { if (!(live && zap(1))) poke(); true }
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> { if (!live) seekBy(-10_000) else poke(); true }
+            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { if (!live) seekBy(30_000) else poke(); true }
+            KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_SETTINGS, KeyEvent.KEYCODE_INFO -> { panel = true; true }
+            else -> false
+        }
+    }
+
+    Box(
+        Modifier.fillMaxSize().background(Color.Black)
+            .then(
+                if (m.isTv) Modifier
+                    .onPreviewKeyEvent { tvKey(it) }
+                    .focusRequester(rootFr)
+                    .focusable()
+                else Modifier
+            )
+    ) {
         AndroidView(
             factory = { ctx ->
                 ZapPlayerView(ctx).apply {
@@ -358,11 +433,11 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     isFocusable = true
                     isFocusableInTouchMode = true
                     setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { v -> controlsVisible = v == android.view.View.VISIBLE })
-                    post { requestFocus() }
+                    if (!m.isTv) post { requestFocus() }
                 }
             },
             update = { v ->
-                val blocked = errorMsg != null || panel
+                val blocked = errorMsg != null || panel || m.isTv
                 v.onMenu = { panel = !panel }
                 v.useController = !m.pip && !blocked
                 v.isFocusable = !blocked
@@ -386,19 +461,24 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             modifier = Modifier.fillMaxSize()
         )
 
-        if (!m.pip && (controlsVisible || errorMsg != null)) {
+        if (!m.pip && (uiVisible || errorMsg != null)) {
             Row(
                 Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent))).padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                IconFocus(Icons.AutoMirrored.Filled.ArrowBack, "Retour") { m.back() }
+                if (!m.isTv) IconFocus(Icons.AutoMirrored.Filled.ArrowBack, "Retour") { m.back() }
                 Column(Modifier.weight(1f)) {
                     Text(r.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     val sub = if (item is Playable.Live && cur != null) "En direct · ${cur.title}" else r.subtitle
                     if (sub.isNotBlank()) Text(sub, color = C.Sub, fontSize = 14.sp, maxLines = 1)
                 }
-                com.lumo.tv.ui.FocusBox(shape = RoundedCornerShape(50), scale = 1.06f, onClick = { panel = !panel }) { _ ->
+                if (m.isTv) {
+                    Text(
+                        "OK : pause · Menu ou OK long : synchro du son et minuteur" + if (item is Playable.Live) " · ▲▼ : chaînes" else " · ◀▶ : −10 s / +30 s",
+                        color = C.Sub, fontSize = 13.sp
+                    )
+                } else com.lumo.tv.ui.FocusBox(shape = RoundedCornerShape(50), scale = 1.06f, onClick = { panel = !panel }) { _ ->
                     Text(
                         if (avDelay == 0) "Synchro son" else "Son ${if (avDelay > 0) "+" else ""}$avDelay ms",
                         color = Color.White, fontSize = 14.sp,
@@ -406,7 +486,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     )
                 }
                 val left = sleepAt?.let { ((it - clock) / 60000).coerceAtLeast(0) }
-                com.lumo.tv.ui.FocusBox(shape = RoundedCornerShape(50), scale = 1.06f, onClick = {
+                if (!m.isTv) com.lumo.tv.ui.FocusBox(shape = RoundedCornerShape(50), scale = 1.06f, onClick = {
                     val steps = listOf<Long?>(30, 60, 90, null)
                     val cur = left?.let { l -> steps.firstOrNull { st -> st != null && st >= l + 1 } }
                     val idx = if (sleepAt == null) 0 else (steps.indexOf(cur) + 1).coerceAtMost(steps.lastIndex)
@@ -423,9 +503,9 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             }
         }
 
-        if (!m.pip && item is Playable.Live && (controlsVisible || banner != null)) {
+        if (!m.pip && item is Playable.Live && (uiVisible || banner != null)) {
             Column(
-                Modifier.align(Alignment.BottomStart).padding(start = 24.dp, end = 24.dp, bottom = if (controlsVisible) 72.dp else 28.dp)
+                Modifier.align(Alignment.BottomStart).padding(start = 24.dp, end = 24.dp, bottom = if (uiVisible && !m.isTv) 72.dp else 28.dp)
                     .widthIn(max = 640.dp).fillMaxWidth()
                     .background(Color(0xCC000000), RoundedCornerShape(10.dp)).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -463,6 +543,30 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 val it = item
                 val num = if (it is Playable.Live) "${it.index + 1}/${it.list.size}  " else ""
                 Text(num + b, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        if (m.isTv && !m.pip && paused && errorMsg == null && !panel) {
+            Box(Modifier.align(Alignment.Center).background(Color(0xAA000000), RoundedCornerShape(50)).padding(horizontal = 28.dp, vertical = 14.dp)) {
+                Text("Pause", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        if (m.isTv && !m.pip && uiVisible && item !is Playable.Live && errorMsg == null) {
+            fun t(ms: Long): String { val s2 = ms / 1000; val h = s2 / 3600; val mi = (s2 % 3600) / 60; val se = s2 % 60; return if (h > 0) "%d:%02d:%02d".format(h, mi, se) else "%02d:%02d".format(mi, se) }
+            Column(
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000)))).padding(horizontal = 40.dp, vertical = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val frac = if (durMs > 0) (posMs.toFloat() / durMs).coerceIn(0f, 1f) else 0f
+                Box(Modifier.fillMaxWidth().height(5.dp).background(Color(0x55FFFFFF), RoundedCornerShape(3.dp))) {
+                    Box(Modifier.fillMaxHeight().fillMaxWidth(frac).background(C.Red, RoundedCornerShape(3.dp)))
+                }
+                Row(Modifier.fillMaxWidth()) {
+                    Text(t(posMs), color = Color.White, fontSize = 14.sp)
+                    Spacer(Modifier.weight(1f))
+                    Text(if (durMs > 0) "-" + t(durMs - posMs) else "", color = C.Sub, fontSize = 14.sp)
+                }
             }
         }
 
