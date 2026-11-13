@@ -136,7 +136,8 @@ fun MovieDetailScreen(m: AppModel, v: Vod) {
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 val resume = prog != null && !prog.finished && prog.pos > 30_000
-                LumoButton(if (resume) "Reprendre" else "Lecture", icon = { Icon(Icons.Default.PlayArrow, null, tint = Color.Black) }) {
+                val fr = rememberAutoFocus(m.isTv)
+                LumoButton(if (resume) "Reprendre" else "Lecture", requester = fr, icon = { Icon(Icons.Default.PlayArrow, null, tint = Color.Black) }) {
                     m.go(Screen.Player(Playable.Movie(v)))
                 }
                 if (resume) LumoButton("Depuis le début", primary = false) { m.go(Screen.Player(Playable.Movie(v, fromStart = true))) }
@@ -183,6 +184,7 @@ fun SeriesDetailScreen(m: AppModel, s: Series) {
                     ).joinToString(" · ")
                     if (meta.isNotBlank()) Text(meta, color = C.Sub, fontSize = 14.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        val favFr = rememberAutoFocus(m.isTv)
                         if (i != null) {
                             val target = findResume(i, last)
                             if (target != null) {
@@ -193,7 +195,7 @@ fun SeriesDetailScreen(m: AppModel, s: Series) {
                                 }
                             }
                         }
-                        LumoButton(if (fav) "Dans ma liste" else "Ma liste", primary = false, icon = { Icon(if (fav) Icons.Default.Check else Icons.Default.Add, null, tint = Color.White) }) {
+                        LumoButton(if (fav) "Dans ma liste" else "Ma liste", primary = false, requester = favFr, icon = { Icon(if (fav) Icons.Default.Check else Icons.Default.Add, null, tint = Color.White) }) {
                             m.toggleFav("series", s.id)
                         }
                     }

@@ -150,9 +150,10 @@ fun ProfilesScreen(m: AppModel) {
         Text(if (manage) "Gérer les profils" else "Qui regarde ?", color = Color.White, fontSize = if (m.isTv) 44.sp else 30.sp, fontWeight = FontWeight.Medium)
         Spacer(Modifier.height(36.dp))
         val tile = if (m.isTv) 150.dp else 110.dp
+        val fr = rememberAutoFocus(m.isTv, profiles.size)
         FlowRowCompat(spacing = 24.dp) {
-            profiles.forEach { p ->
-                ProfileTile(p.name, Color(p.color), tile, edit = manage) {
+            profiles.forEachIndexed { i, p ->
+                ProfileTile(p.name, Color(p.color), tile, edit = manage, requester = if (i == 0) fr else null) {
                     if (manage) m.go(Screen.ProfileEdit(p)) else m.selectProfile(p)
                 }
             }
@@ -173,9 +174,9 @@ fun ProfilesScreen(m: AppModel) {
 }
 
 @Composable
-private fun ProfileTile(name: String, color: Color, size: androidx.compose.ui.unit.Dp, edit: Boolean, onClick: () -> Unit) {
+private fun ProfileTile(name: String, color: Color, size: androidx.compose.ui.unit.Dp, edit: Boolean, requester: androidx.compose.ui.focus.FocusRequester? = null, onClick: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        FocusBox(modifier = Modifier.size(size), scale = 1.08f, onClick = onClick) { _ ->
+        FocusBox(modifier = Modifier.size(size), scale = 1.08f, requester = requester, onClick = onClick) { _ ->
             Box(Modifier.fillMaxSize().background(color), contentAlignment = Alignment.Center) {
                 Text(name.take(1).uppercase(), color = Color.White, fontSize = 64.sp, fontWeight = FontWeight.Black)
                 if (edit) {

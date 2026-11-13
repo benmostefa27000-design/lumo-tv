@@ -12,7 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -230,7 +230,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     isFocusable = true
                     isFocusableInTouchMode = true
                     setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { v -> controlsVisible = v == android.view.View.VISIBLE })
-                    requestFocus()
+                    post { requestFocus() }
                 }
             },
             update = { v ->
@@ -250,7 +250,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                IconFocus(Icons.Default.ArrowBack, "Retour") { m.back() }
+                IconFocus(Icons.AutoMirrored.Filled.ArrowBack, "Retour") { m.back() }
                 Column {
                     Text(r.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     if (r.subtitle.isNotBlank()) Text(r.subtitle, color = C.Sub, fontSize = 14.sp, maxLines = 1)

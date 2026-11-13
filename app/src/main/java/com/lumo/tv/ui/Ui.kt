@@ -12,6 +12,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -61,6 +63,7 @@ fun FocusBox(
     shape: Shape = RoundedCornerShape(6.dp),
     scale: Float = 1.06f,
     onLongClick: (() -> Unit)? = null,
+    requester: FocusRequester? = null,
     onClick: () -> Unit,
     content: @Composable BoxScope.(focused: Boolean) -> Unit
 ) {
@@ -70,6 +73,7 @@ fun FocusBox(
         modifier
             .graphicsLayer { scaleX = s; scaleY = s }
             .onFocusChanged { focused = it.isFocused }
+            .then(if (requester != null) Modifier.focusRequester(requester) else Modifier)
             .clip(shape)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .then(if (focused) Modifier.border(3.dp, Color.White, shape) else Modifier)
@@ -90,9 +94,10 @@ fun LumoButton(
     modifier: Modifier = Modifier,
     primary: Boolean = true,
     icon: (@Composable () -> Unit)? = null,
+    requester: FocusRequester? = null,
     onClick: () -> Unit
 ) {
-    FocusBox(modifier = modifier.height(46.dp), shape = RoundedCornerShape(6.dp), scale = 1.04f, onClick = onClick) { _ ->
+    FocusBox(modifier = modifier.height(46.dp), shape = RoundedCornerShape(6.dp), scale = 1.04f, requester = requester, onClick = onClick) { _ ->
         Row(
             Modifier
                 .fillMaxHeight()
@@ -198,3 +203,15 @@ fun lumoTextFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedTextColor = Color.White,
     unfocusedTextColor = Color.White
 )
+
+/** Sur TV, place la sélection sur un élément dès l'ouverture de l'écran. */
+@Composable
+fun rememberAutoFocus(enabled: Boolean, key: Any? = Unit): FocusRequester? {
+    if (!enabled) return null
+    val fr = remember { FocusRequester() }
+    LaunchedEffect(key) {
+        kotlinx.coroutines.delay(150)
+        try { fr.requestFocus() } catch (_: Exception) { }
+    }
+    return fr
+}

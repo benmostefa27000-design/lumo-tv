@@ -109,8 +109,9 @@ private fun TvTopBar(m: AppModel) {
     ) {
         LumoLogo(34)
         Spacer(Modifier.width(18.dp))
+        val fr = rememberAutoFocus(true)
         listOf(Tab.Home, Tab.Live, Tab.Movies, Tab.Series, Tab.MyList).forEach { t ->
-            FocusBox(shape = RoundedCornerShape(6.dp), scale = 1.05f, onClick = { m.tab = t }) { f ->
+            FocusBox(shape = RoundedCornerShape(6.dp), scale = 1.05f, requester = if (t == m.tab) fr else null, onClick = { m.tab = t }) { f ->
                 Text(
                     t.label,
                     color = if (m.tab == t || f) Color.White else C.Sub,

@@ -148,7 +148,7 @@ fun ChannelGuideScreen(m: AppModel, s: LiveStream, list: List<LiveStream>) {
                 Text(s.name, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                 Text(if (s.archive) "Rattrapage disponible (${s.archiveDays} jours)" else "Pas de rattrapage sur cette chaîne", color = C.Sub, fontSize = 14.sp)
             }
-            LumoButton("Direct", icon = { Icon(Icons.Default.PlayArrow, null, tint = Color.Black) }) {
+            LumoButton("Direct", requester = rememberAutoFocus(m.isTv), icon = { Icon(Icons.Default.PlayArrow, null, tint = Color.Black) }) {
                 m.go(Screen.Player(Playable.Live(list, list.indexOfFirst { it.id == s.id }.coerceAtLeast(0))))
             }
         }
