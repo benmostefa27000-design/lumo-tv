@@ -34,6 +34,11 @@ class Store(context: Context) {
         get() = prefs.getString("liveFormat", "ts") ?: "ts"
         set(v) { prefs.edit().putString("liveFormat", v).apply(); version++ }
 
+    /** Défilement 3D et reflets (à couper si un vieux Fire Stick rame). */
+    var anim3d: Boolean
+        get() = prefs.getBoolean("anim3d", true)
+        set(v) { prefs.edit().putBoolean("anim3d", v).apply(); version++ }
+
     var profileId: String?
         get() = prefs.getString("profileId", null)
         set(v) { prefs.edit().putString("profileId", v).apply(); version++ }

@@ -103,6 +103,11 @@ fun SettingsScreen(m: AppModel) {
         item { SettingRow("Gérer les catégories", "Tout sélectionner, supprimer, restaurer") { m.go(Screen.Categories) } }
         if (!m.isTv) item { SettingRow("Connecter une TV", "Avec le code ou le QR code affiché sur la TV") { m.go(Screen.PairPhone) } }
         item {
+            SettingRow("Animations 3D", if (m.store.anim3d) "Activées (défilement des affiches, reflets)" else "Désactivées : plus léger pour un vieux Fire Stick") {
+                m.store.anim3d = !m.store.anim3d
+            }
+        }
+        item {
             SettingRow("Format du direct", if (m.store.liveFormat == "ts") "TS (par défaut)" else "HLS (m3u8)") {
                 m.store.liveFormat = if (m.store.liveFormat == "ts") "m3u8" else "ts"
             }

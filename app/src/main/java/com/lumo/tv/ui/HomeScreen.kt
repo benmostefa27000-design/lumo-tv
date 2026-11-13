@@ -14,6 +14,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -72,7 +74,16 @@ fun HomeScreen(m: AppModel) {
                 }
             }
         }
-        if (recentVods.isNotEmpty()) item {
+        val anim = run { m.store.version; m.store.anim3d }
+        if (anim && recentVods.size >= 3) item(key = "flow") {
+            val flow = remember(recentVods) {
+                recentVods.take(25).map { v ->
+                    FlowItem(v.id, v.name, v.icon, listOfNotNull("Film", v.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { "★ %.1f".format(it) }).joinToString(" · "))
+                }
+            }
+            CoverFlow("Nouveautés", flow, m.isTv) { i -> m.go(Screen.MovieDetail(recentVods[i])) }
+        }
+        if (recentVods.isNotEmpty() && !anim) item {
             RowSection("Films ajoutés récemment") {
                 items(recentVods, key = { "rv" + it.id }) { v -> PosterCard(v.name, v.icon, cardW) { m.go(Screen.MovieDetail(v)) } }
             }
@@ -145,9 +156,20 @@ private fun Hero(m: AppModel, v: Vod) {
         info = withContext(Dispatchers.IO) { try { m.client?.vodInfo(v.id) } catch (_: Exception) { null } }
     }
     val h = if (m.isTv) 400.dp else 420.dp
-    Box(Modifier.fillMaxWidth().height(h)) {
+    val anim = m.store.anim3d
+    val kb = if (anim) {
+        val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "heroZoom")
+        t.animateFloat(
+            initialValue = 1f, targetValue = 1.08f,
+            animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                androidx.compose.animation.core.tween(20_000), androidx.compose.animation.core.RepeatMode.Reverse
+            ),
+            label = "heroZoom"
+        ).value
+    } else 1f
+    Box(Modifier.fillMaxWidth().height(h).clipToBounds()) {
         val img = info?.backdrop?.ifBlank { null } ?: v.icon
-        if (img.isNotBlank()) AsyncImage(model = img, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        if (img.isNotBlank()) AsyncImage(model = img, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().graphicsLayer { scaleX = kb; scaleY = kb })
         Box(Modifier.fillMaxSize().background(leftFade()))
         Box(Modifier.fillMaxSize().background(bottomFade()))
         Column(
