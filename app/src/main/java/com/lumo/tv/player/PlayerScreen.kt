@@ -105,6 +105,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     // Écran déjà utilisé : nouvel essai automatique (la connexion précédente met parfois ~1 min à se libérer)
     val uiScope = rememberCoroutineScope()
     var consInfo by remember { mutableStateOf<String?>(null) }
+    var busySince by remember { mutableLongStateOf(0L) }
     var busyRetry by remember { mutableIntStateOf(0) }
     var busyCountdown by remember { mutableIntStateOf(0) }
     val errorFr = remember { androidx.compose.ui.focus.FocusRequester() }
@@ -299,17 +300,17 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     LaunchedEffect(busyRetry) {
         if (busyRetry == 0) { consInfo = null; return@LaunchedEffect }
         val t0 = System.currentTimeMillis()
-        while (errorMsg != null && System.currentTimeMillis() - t0 < 240_000) {
+        if (busySince == 0L) busySince = t0
+        while (errorMsg != null) {
             val a = withContext(Dispatchers.IO) { try { m.client?.auth() } catch (_: Exception) { null } }
             val elapsed = System.currentTimeMillis() - t0
             if (a != null && a.maxConnections > 0) {
                 consInfo = "Écrans utilisés sur ton abonnement : ${a.activeCons}/${a.maxConnections}"
                 if (a.activeCons < a.maxConnections && elapsed >= 3000) { errorMsg = null; load(item, false); return@LaunchedEffect }
             } else if (elapsed >= 10_000) { errorMsg = null; load(item, false); return@LaunchedEffect }
-            busyCountdown = ((240_000 - elapsed) / 1000).toInt()
-            delay(4000)
+            busyCountdown = ((System.currentTimeMillis() - busySince) / 1000).toInt().coerceAtLeast(1)
+            delay(5000)
         }
-        busyCountdown = 0
     }
 
     // La télécommande va sur les boutons quand un message s'affiche
@@ -329,7 +330,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             }
 
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_READY) { retries = 0; busyRetry = 0; busyCountdown = 0 }
+                if (state == Player.STATE_READY) { retries = 0; busyRetry = 0; busyCountdown = 0; busySince = 0L }
                 if (state == Player.STATE_ENDED) {
                     saveProgress(finished = true)
                     val it = item
@@ -356,7 +357,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 val code = (error.cause as? HttpDataSource.InvalidResponseCodeException)?.responseCode
                 if (code != null && code in listOf(401, 403, 405, 456, 458, 509, 429)) {
                     errorMsg = "Ton abonnement est déjà utilisé sur un autre écran (code $code), ou la connexion précédente n'est pas encore libérée."
-                    if (busyRetry < 12) { busyRetry++; busyCountdown = 1 }
+                    busyRetry++; busyCountdown = 1
                     return
                 }
                 val isLive = item is Playable.Live
@@ -645,7 +646,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             ) {
                 Text(msg, color = Color.White, fontSize = 16.sp)
                 consInfo?.let { Text(it, color = Color.White, fontSize = 15.sp) }
-                if (busyCountdown > 0) Text("Relance automatique dès qu'un écran se libère…", color = C.Sub, fontSize = 14.sp)
+                if (busyCountdown > 0) Text("Relance automatique dès qu'un écran se libère (attente ${busyCountdown / 60} min ${busyCountdown % 60} s). Ton fournisseur peut mettre jusqu'à 5 min.", color = C.Sub, fontSize = 14.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     LumoButton("Réessayer", requester = errorFr) { retries = 0; busyRetry = 0; busyCountdown = 0; errorMsg = null; load(item, false) }
                     LumoButton("Retour", primary = false) { m.back() }
