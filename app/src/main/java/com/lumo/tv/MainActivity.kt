@@ -13,6 +13,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Crash.install(applicationContext)
         model = AppModel(applicationContext)
         handleIntent(intent)
         setContent { LumoApp(model) }

@@ -117,6 +117,7 @@ class AppModel(private val context: Context) {
         }
         startSyncLoop()
         if (isTv) startCommandListener()
+        sendPendingCrash()
         checkUpdate(silent = true)
     }
 
@@ -191,6 +192,8 @@ class AppModel(private val context: Context) {
                     withContext(Dispatchers.Main) { live = l }
                 }
                 warmSearch()
+            } catch (e: OutOfMemoryError) {
+                loadError = "Catalogue trop lourd pour cet appareil. Supprime des catégories depuis le téléphone (Réglages › Gérer les catégories)."
             } catch (e: Exception) {
                 loadError = "Chargement impossible : ${e.message ?: "erreur réseau"}"
             } finally {
@@ -363,7 +366,19 @@ class AppModel(private val context: Context) {
     }
 
     /** Prépare l'index de recherche en avance, dès que le catalogue est chargé. */
-    fun warmSearch() { scope.launch { search("zz") } }
+    fun warmSearch() { if (!isTv) scope.launch { search("zz") } }
+
+    /** Envoie le rapport du dernier plantage (aucune donnée perso : appareil, version, erreur). */
+    private fun sendPendingCrash() {
+        val txt = Crash.pending(context) ?: return
+        if (!sync.enabled) return
+        scope.launch(Dispatchers.IO) {
+            try {
+                sync.put("crash/${store.deviceId}-${System.currentTimeMillis()}", JSONObject().put("report", txt))
+                Crash.clear(context)
+            } catch (_: Exception) { }
+        }
+    }
 
     // ---------- Regarder sur la TV / télécommande ----------
 

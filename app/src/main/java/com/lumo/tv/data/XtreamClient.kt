@@ -35,26 +35,59 @@ class XtreamClient(val acc: Account, private val http: OkHttpClient, private val
         }
     }
 
-    private fun cached(name: String, url: String, maxAgeMs: Long, force: Boolean): String {
+    /** Télécharge une liste dans un fichier (sans tout garder en mémoire) et le réutilise quelques heures. */
+    private fun cachedFile(name: String, url: String, maxAgeMs: Long, force: Boolean): File {
         val dir = File(cacheDir, "xtream").apply { mkdirs() }
         val f = File(dir, "${acc.key()}_$name.json")
-        if (!force && f.exists() && System.currentTimeMillis() - f.lastModified() < maxAgeMs) {
-            return f.readText()
-        }
-        return try {
-            val s = fetch(url)
-            if (s.isNotBlank()) f.writeText(s)
-            s
+        if (!force && f.exists() && f.length() > 0 && System.currentTimeMillis() - f.lastModified() < maxAgeMs) return f
+        try {
+            val tmp = File(dir, "${acc.key()}_$name.tmp")
+            val req = Request.Builder().url(url).header("User-Agent", USER_AGENT).build()
+            http.newCall(req).execute().use { r ->
+                if (!r.isSuccessful) throw IOException("HTTP ${r.code}")
+                r.body!!.byteStream().use { input -> tmp.outputStream().use { input.copyTo(it) } }
+            }
+            if (tmp.length() > 0) { if (f.exists()) f.delete(); tmp.renameTo(f) }
         } catch (e: Exception) {
-            if (f.exists()) f.readText() else throw e
+            if (!f.exists()) throw e
+        }
+        return f
+    }
+
+    /**
+     * Lit un tableau JSON objet par objet (JsonReader), en ne gardant que les champs utiles.
+     * Évite de charger tout le catalogue en mémoire d'un coup (indispensable sur Fire Stick).
+     */
+    private fun streamArray(f: File, keys: Set<String>, each: (Map<String, String>) -> Unit) {
+        if (!f.exists() || f.length() == 0L) return
+        android.util.JsonReader(java.io.InputStreamReader(f.inputStream().buffered(65536), Charsets.UTF_8)).use { r ->
+            r.isLenient = true
+            if (r.peek() != android.util.JsonToken.BEGIN_ARRAY) return
+            r.beginArray()
+            val row = HashMap<String, String>(keys.size * 2)
+            while (r.hasNext()) {
+                if (r.peek() != android.util.JsonToken.BEGIN_OBJECT) { r.skipValue(); continue }
+                row.clear()
+                r.beginObject()
+                while (r.hasNext()) {
+                    val k = r.nextName()
+                    if (k !in keys) { r.skipValue(); continue }
+                    row[k] = when (r.peek()) {
+                        android.util.JsonToken.STRING, android.util.JsonToken.NUMBER -> r.nextString()
+                        android.util.JsonToken.BOOLEAN -> r.nextBoolean().toString()
+                        android.util.JsonToken.NULL -> { r.nextNull(); "" }
+                        else -> { r.skipValue(); "" }
+                    }
+                }
+                r.endObject()
+                each(row)
+            }
         }
     }
 
-    private fun array(s: String): List<JSONObject> {
-        val t = s.trim()
-        if (!t.startsWith("[")) return emptyList()
-        return JSONArray(t).objects()
-    }
+    private fun Map<String, String>.str(k: String) = this[k] ?: ""
+    private fun Map<String, String>.int(k: String) = this[k]?.trim()?.toDoubleOrNull()?.toInt() ?: 0
+    private fun Map<String, String>.long(k: String) = this[k]?.trim()?.toDoubleOrNull()?.toLong() ?: 0L
 
     fun auth(): AuthInfo {
         val o = JSONObject(fetch(api(null)))
@@ -79,8 +112,10 @@ class XtreamClient(val acc: Account, private val http: OkHttpClient, private val
     private val blockedCats = HashSet<String>()
 
     private fun categories(action: String, name: String, force: Boolean): List<Category> {
-        val all = array(cached(name, api(action), SIX_HOURS, force))
-            .map { Category(it.s("category_id"), it.s("category_name").trim()) }
+        val all = ArrayList<Category>()
+        streamArray(cachedFile(name, api(action), SIX_HOURS, force), setOf("category_id", "category_name")) {
+            all.add(Category(it.str("category_id"), it.str("category_name").trim()))
+        }
         val (bad, good) = all.partition { ContentFilter.blocked(it.name) }
         synchronized(blockedCats) { blockedCats.addAll(bad.map { it.id }) }
         return good
@@ -92,60 +127,74 @@ class XtreamClient(val acc: Account, private val http: OkHttpClient, private val
     fun vodCategories(force: Boolean = false) = categories("get_vod_categories", "vod_cats", force)
     fun seriesCategories(force: Boolean = false) = categories("get_series_categories", "series_cats", force)
 
-    fun liveStreams(force: Boolean = false): List<LiveStream> =
-        array(cached("live", api("get_live_streams"), SIX_HOURS, force)).mapNotNull {
-            val name = it.s("name").trim()
-            val cat = it.s("category_id")
-            if (isBlockedCat(cat) || ContentFilter.blocked(name) || it.s("is_adult") == "1") null
-            else LiveStream(
-                id = it.s("stream_id"),
-                num = it.i("num"),
-                name = name,
-                icon = it.s("stream_icon"),
-                catId = cat,
-                archive = it.i("tv_archive") == 1,
-                archiveDays = it.i("tv_archive_duration"),
-                epgId = it.s("epg_channel_id").trim()
+    fun liveStreams(force: Boolean = false): List<LiveStream> {
+        val out = ArrayList<LiveStream>()
+        val keys = setOf("stream_id", "num", "name", "stream_icon", "category_id", "tv_archive", "tv_archive_duration", "epg_channel_id", "is_adult")
+        streamArray(cachedFile("live", api("get_live_streams"), SIX_HOURS, force), keys) {
+            val name = it.str("name").trim()
+            val cat = it.str("category_id")
+            if (!isBlockedCat(cat) && !ContentFilter.blocked(name) && it.str("is_adult") != "1") out.add(
+                LiveStream(
+                    id = it.str("stream_id"),
+                    num = it.int("num"),
+                    name = name,
+                    icon = it.str("stream_icon"),
+                    catId = cat,
+                    archive = it.int("tv_archive") == 1,
+                    archiveDays = it.int("tv_archive_duration"),
+                    epgId = it.str("epg_channel_id").trim()
+                )
             )
-        }.also { list ->
-            synchronized(epgIds) {
-                epgIds.clear(); liveNames.clear()
-                list.forEach { s -> if (s.epgId.isNotEmpty()) epgIds.add(s.epgId.lowercase()); liveNames.add(normName(s.name)) }
-            }
         }
+        synchronized(epgIds) {
+            epgIds.clear(); liveNames.clear()
+            out.forEach { s -> if (s.epgId.isNotEmpty()) epgIds.add(s.epgId.lowercase()); liveNames.add(normName(s.name)) }
+        }
+        return out
+    }
 
-    fun vods(force: Boolean = false): List<Vod> =
-        array(cached("vod", api("get_vod_streams"), SIX_HOURS, force)).mapNotNull {
-            val name = it.s("name").trim()
-            val cat = it.s("category_id")
-            if (isBlockedCat(cat) || ContentFilter.blocked(name) || it.s("is_adult") == "1") null
-            else Vod(
-                id = it.s("stream_id"),
-                name = name,
-                icon = it.s("stream_icon"),
-                catId = cat,
-                rating = it.s("rating"),
-                ext = it.s("container_extension").ifBlank { "mp4" },
-                added = it.l("added")
+    fun vods(force: Boolean = false): List<Vod> {
+        val out = ArrayList<Vod>()
+        val keys = setOf("stream_id", "name", "stream_icon", "category_id", "rating", "container_extension", "added", "is_adult")
+        streamArray(cachedFile("vod", api("get_vod_streams"), SIX_HOURS, force), keys) {
+            val name = it.str("name").trim()
+            val cat = it.str("category_id")
+            if (!isBlockedCat(cat) && !ContentFilter.blocked(name) && it.str("is_adult") != "1") out.add(
+                Vod(
+                    id = it.str("stream_id"),
+                    name = name,
+                    icon = it.str("stream_icon"),
+                    catId = cat,
+                    rating = it.str("rating"),
+                    ext = it.str("container_extension").ifBlank { "mp4" },
+                    added = it.long("added")
+                )
             )
         }
+        return out
+    }
 
-    fun series(force: Boolean = false): List<Series> =
-        array(cached("series", api("get_series"), SIX_HOURS, force)).mapNotNull {
-            val name = it.s("name").trim()
-            val cat = it.s("category_id")
-            if (isBlockedCat(cat) || ContentFilter.blocked(name)) null
-            else Series(
-                id = it.s("series_id"),
-                name = name,
-                cover = it.s("cover"),
-                catId = cat,
-                rating = it.s("rating"),
-                plot = it.s("plot"),
-                year = it.s("releaseDate").take(4),
-                modified = it.l("last_modified")
+    fun series(force: Boolean = false): List<Series> {
+        val out = ArrayList<Series>()
+        val keys = setOf("series_id", "name", "cover", "category_id", "rating", "plot", "releaseDate", "last_modified")
+        streamArray(cachedFile("series", api("get_series"), SIX_HOURS, force), keys) {
+            val name = it.str("name").trim()
+            val cat = it.str("category_id")
+            if (!isBlockedCat(cat) && !ContentFilter.blocked(name)) out.add(
+                Series(
+                    id = it.str("series_id"),
+                    name = name,
+                    cover = it.str("cover"),
+                    catId = cat,
+                    rating = it.str("rating"),
+                    plot = it.str("plot").take(300),
+                    year = it.str("releaseDate").take(4),
+                    modified = it.long("last_modified")
+                )
             )
         }
+        return out
+    }
 
     fun vodInfo(id: String): VodInfo {
         val o = JSONObject(fetch(api("get_vod_info", "&vod_id=$id")))
