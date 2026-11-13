@@ -183,7 +183,7 @@ class AppModel(private val context: Context) {
                     val lc = c.liveCategories(force)
                     val vc = c.vodCategories(force)
                     val sc = c.seriesCategories(force)
-                    withContext(Dispatchers.Main) { liveCats = lc; vodCats = vc; seriesCats = sc }
+                    withContext(Dispatchers.Main) { liveCats = sortCats(lc); vodCats = sortCats(vc); seriesCats = sortCats(sc) }
                     val v = c.vods(force)
                     withContext(Dispatchers.Main) { vods = v }
                     val s = c.series(force)
@@ -199,6 +199,19 @@ class AppModel(private val context: Context) {
             } finally {
                 loading = false
             }
+        }
+    }
+
+    // ---------- Ordre des catégories : français, puis arabe, puis le reste ----------
+
+    private val frCat = Regex("(^|[^a-z])(fr|vf|vff|vfq|vostfr|french|france|fran[cç]ais)([^a-z]|$)", RegexOption.IGNORE_CASE)
+    private val arCat = Regex("(^|[^a-z])(ar|arab|arabe|arabic|maghreb|algerie|algérie|maroc|morocco|tunisie|tunisia|egypt|egypte|liban|lebanon|syrie|irak|iraq|khaleej|gulf|saudi|ksa|qatar|osn|mbc|bein)([^a-z]|$)|[\u0600-\u06FF]", RegexOption.IGNORE_CASE)
+
+    fun sortCats(list: List<Category>): List<Category> = list.sortedBy { c ->
+        when {
+            frCat.containsMatchIn(c.name) -> 0
+            arCat.containsMatchIn(c.name) -> 1
+            else -> 2
         }
     }
 
