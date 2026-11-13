@@ -249,6 +249,8 @@ class XtreamClient(val acc: Account, private val http: OkHttpClient, private val
     private var xmltv: Map<String, List<EpgEntry>>? = null
     /** Nom de chaîne simplifié → identifiant du guide XMLTV. */
     private var nameToId: Map<String, String> = emptyMap()
+    /** Diagnostic : programmes bruts par chaîne (nombre, premières dates telles qu'écrites). */
+    private val rawStats = HashMap<String, Triple<Int, String, String>>()
     @Volatile var guideStatus: String = "guide complet pas encore chargé"
         private set
 
@@ -305,7 +307,9 @@ class XtreamClient(val acc: Account, private val http: OkHttpClient, private val
         val list = if (map != null && id != null) map[id].orEmpty() else emptyList()
         val hf = SimpleDateFormat("dd/MM HH:mm", Locale.FRANCE)
         val range = if (list.isEmpty()) "0 prog." else "${list.size} prog. du ${hf.format(java.util.Date(list.first().start))} au ${hf.format(java.util.Date(list.last().end))}"
-        return "API : $lastApiRaw · guide : ${id ?: "non trouvé"} · $range · maintenant ${hf.format(java.util.Date())} · $guideStatus · tz $serverTimezone"
+        val raw = id?.let { rawStats[it] }
+        val rawTxt = if (raw == null) "brut : 0" else "brut : ${raw.first} (ex. ${raw.second} → ${raw.third})"
+        return "API : $lastApiRaw · guide : ${id ?: "non trouvé"} · $range · $rawTxt · maintenant ${hf.format(java.util.Date())} · $guideStatus · tz $serverTimezone"
     }
 
     private fun loadXmltv(): Map<String, List<EpgEntry>> {
@@ -324,7 +328,7 @@ class XtreamClient(val acc: Account, private val http: OkHttpClient, private val
         }
         val wanted = synchronized(epgIds) { HashSet(epgIds) }
         val names = synchronized(epgIds) { HashSet(liveNames) }
-        val chanNames = HashMap<String, String>()
+        val chanNames = HashMap<String, MutableList<String>>()
         var channelsDone = false
         var curChannelId: String? = null
         val now = System.currentTimeMillis()
@@ -356,20 +360,24 @@ class XtreamClient(val acc: Account, private val http: OkHttpClient, private val
                             if (!channelsDone) {
                                 channelsDone = true
                                 // Chaînes du fournisseur sans id de guide : on les retrouve par leur nom.
-                                chanNames.forEach { (n, id) -> if (n in names) wanted.add(id) }
+                                chanNames.forEach { (n, ids) -> if (n in names) wanted.addAll(ids) }
                             }
                             val ch = parser.getAttributeValue(null, "channel")?.lowercase()
                             channel = if (ch != null && (wanted.isEmpty() || ch in wanted)) ch else null
                             if (channel != null) {
-                                start = time(parser.getAttributeValue(null, "start"))
-                                end = time(parser.getAttributeValue(null, "stop"))
+                                val rs = parser.getAttributeValue(null, "start") ?: ""
+                                val re = parser.getAttributeValue(null, "stop") ?: ""
+                                start = time(rs)
+                                end = time(re)
                                 title = ""; desc = ""
+                                val prev = rawStats[channel!!]
+                                rawStats[channel!!] = if (prev == null) Triple(1, rs, re) else Triple(prev.first + 1, prev.second, prev.third)
                             }
                         }
                         "title", "desc" -> field = if (channel != null) parser.name else null
                     }
                     org.xmlpull.v1.XmlPullParser.TEXT -> when (field) {
-                        "display-name" -> curChannelId?.let { id -> val n = normName(parser.text); if (n.isNotEmpty()) chanNames.putIfAbsent(n, id) }
+                        "display-name" -> curChannelId?.let { id -> val n = normName(parser.text); if (n.isNotEmpty()) chanNames.getOrPut(n) { ArrayList() }.let { l -> if (id !in l) l.add(id) } }
                         "title" -> if (title.isEmpty()) title = parser.text.trim()
                         "desc" -> if (desc.isEmpty()) desc = parser.text.trim()
                     }
@@ -388,7 +396,10 @@ class XtreamClient(val acc: Account, private val http: OkHttpClient, private val
                 event = parser.next()
             }
         }
-        nameToId = chanNames
+        // Plusieurs fiches « TF1 » dans le guide : garder celle qui a des programmes.
+        val byName = HashMap<String, String>()
+        chanNames.forEach { (n, ids) -> byName[n] = ids.maxByOrNull { out[it]?.size ?: 0 } ?: ids.first() }
+        nameToId = byName
         val result = out.mapValues { (_, l) -> l.distinctBy { it.start }.sortedBy { it.start } }
         guideStatus = "guide complet : ${chanNames.size} chaînes, ${result.size} avec programme"
         return result
