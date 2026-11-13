@@ -192,7 +192,7 @@ private fun ProfileTile(name: String, color: Color, size: androidx.compose.ui.un
 
 /** Petite mise en ligne qui passe à la ligne (évite les API expérimentales). */
 @Composable
-fun FlowRowCompat(spacing: androidx.compose.ui.unit.Dp, content: @Composable () -> Unit) {
+fun FlowRowCompat(spacing: androidx.compose.ui.unit.Dp, center: Boolean = true, content: @Composable () -> Unit) {
     androidx.compose.ui.layout.Layout(content = content) { measurables, constraints ->
         val sp = spacing.roundToPx()
         val placeables = measurables.map { it.measure(constraints.copy(minWidth = 0, minHeight = 0)) }
@@ -210,7 +210,7 @@ fun FlowRowCompat(spacing: androidx.compose.ui.unit.Dp, content: @Composable () 
             var y = 0
             rows.forEach { r ->
                 val rw = r.sumOf { it.width } + sp * (r.size - 1)
-                var x = (constraints.maxWidth - rw) / 2
+                var x = if (center) (constraints.maxWidth - rw) / 2 else 0
                 r.forEach { p -> p.placeRelative(x, y); x += p.width + sp }
                 y += r.maxOf { it.height } + sp
             }
@@ -222,6 +222,8 @@ fun FlowRowCompat(spacing: androidx.compose.ui.unit.Dp, content: @Composable () 
 fun ProfileEditScreen(m: AppModel, existing: Profile?) {
     var name by remember { mutableStateOf(existing?.name ?: "") }
     var color by remember { mutableStateOf(existing?.color ?: profileColors[(m.store.profiles().size) % profileColors.size]) }
+    var kids by remember { mutableStateOf(existing?.kids ?: false) }
+    var pin by remember { mutableStateOf(m.store.pin()) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Text(if (existing == null) "Nouveau profil" else "Modifier le profil", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
         OutlinedTextField(name, { name = it.take(20) }, label = { Text("Prénom") }, singleLine = true, colors = lumoTextFieldColors(), modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth())
@@ -233,11 +235,30 @@ fun ProfileEditScreen(m: AppModel, existing: Profile?) {
                 }
             }
         }
+        FocusBox(scale = 1.03f, onClick = { kids = !kids }) { _ ->
+            Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(Modifier.size(24.dp).background(if (kids) C.Red else Color.Transparent, RoundedCornerShape(5.dp)).border(2.dp, if (kids) C.Red else Color(0xFF5A5A5A), RoundedCornerShape(5.dp)))
+                Column {
+                    Text("Profil Enfants", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text("Seulement les catégories jeunesse et dessins animés", color = C.Dim, fontSize = 13.sp)
+                }
+            }
+        }
+        if (kids) {
+            OutlinedTextField(
+                pin, { pin = it.filter { c -> c.isDigit() }.take(6) },
+                label = { Text("Code parental (pour quitter ce profil)") }, singleLine = true, colors = lumoTextFieldColors(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth()
+            )
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             LumoButton("Enregistrer") {
+                if (kids && pin.length < 4) { m.showToast("Choisis un code d'au moins 4 chiffres"); return@LumoButton }
                 val n = name.trim().ifBlank { "Profil" }
                 val order = existing?.order ?: (m.store.profiles().maxOfOrNull { it.order } ?: 0) + 1
-                m.commit(m.store.saveProfile(Profile(existing?.id ?: "p_${System.currentTimeMillis()}", n, color, existing?.kids ?: false, order)))
+                m.commit(m.store.saveProfile(Profile(existing?.id ?: "p_${System.currentTimeMillis()}", n, color, kids, order)))
+                if (kids && pin != m.store.pin()) m.commit(m.store.setPin(pin))
                 m.back()
             }
             if (existing != null && m.store.profiles().size > 1) {

@@ -134,7 +134,7 @@ fun MovieDetailScreen(m: AppModel, v: Vod) {
                     Text("reste ${((prog.dur - prog.pos) / 60000).coerceAtLeast(1)} min", color = C.Sub, fontSize = 14.sp)
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            FlowRowCompat(spacing = 10.dp, center = false) {
                 val resume = prog != null && !prog.finished && prog.pos > 30_000
                 val fr = rememberAutoFocus(m.isTv)
                 LumoButton(if (resume) "Reprendre" else "Lecture", requester = fr, icon = { Icon(Icons.Default.PlayArrow, null, tint = Color.Black) }) {
@@ -143,6 +143,9 @@ fun MovieDetailScreen(m: AppModel, v: Vod) {
                 if (resume) LumoButton("Depuis le début", primary = false) { m.go(Screen.Player(Playable.Movie(v, fromStart = true))) }
                 LumoButton(if (fav) "Dans ma liste" else "Ma liste", primary = false, icon = { Icon(if (fav) Icons.Default.Check else Icons.Default.Add, null, tint = Color.White) }) {
                     m.toggleFav("vod", v.id)
+                }
+                if (!m.isTv) SendToTvButton(m) {
+                    org.json.JSONObject().put("type", "play_vod").put("id", v.id).put("title", v.name).put("img", v.icon).put("ext", v.ext)
                 }
             }
             info?.plot?.takeIf { it.isNotBlank() }?.let { Text(it, color = Color.White, fontSize = 16.sp, lineHeight = 23.sp) }
@@ -183,7 +186,7 @@ fun SeriesDetailScreen(m: AppModel, s: Series) {
                         i?.genre?.ifBlank { null }
                     ).joinToString(" · ")
                     if (meta.isNotBlank()) Text(meta, color = C.Sub, fontSize = 14.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    FlowRowCompat(spacing = 10.dp, center = false) {
                         val favFr = rememberAutoFocus(m.isTv)
                         if (i != null) {
                             val target = findResume(i, last)
@@ -192,6 +195,9 @@ fun SeriesDetailScreen(m: AppModel, s: Series) {
                                 val ep = eps[idx]
                                 LumoButton(if (last != null) "Reprendre S${ep.season} É${ep.num}" else "Lecture", icon = { Icon(Icons.Default.PlayArrow, null, tint = Color.Black) }) {
                                     m.go(Screen.Player(Playable.Ep(s, eps, idx)))
+                                }
+                                if (!m.isTv) SendToTvButton(m) {
+                                    org.json.JSONObject().put("type", "play_ep").put("series", s.id).put("id", ep.id).put("title", s.name).put("img", s.cover)
                                 }
                             }
                         }

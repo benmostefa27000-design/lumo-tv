@@ -43,6 +43,31 @@ class Store(context: Context) {
         get() = prefs.getString("profileId", null)
         set(v) { prefs.edit().putString("profileId", v).apply(); version++ }
 
+    /** Identifiant de cet appareil (pour « Regarder sur la TV »). */
+    val deviceId: String
+        get() = prefs.getString("deviceId", null) ?: java.util.UUID.randomUUID().toString().replace("-", "").take(16).also {
+            prefs.edit().putString("deviceId", it).apply()
+        }
+
+    /** Langues préférées, retenues quand on les choisit dans le lecteur ("off" = sous-titres coupés). */
+    var prefAudio: String
+        get() = prefs.getString("prefAudio", "") ?: ""
+        set(v) { prefs.edit().putString("prefAudio", v).apply() }
+    var prefText: String
+        get() = prefs.getString("prefText", "") ?: ""
+        set(v) { prefs.edit().putString("prefText", v).apply() }
+
+    /** Rappels d'émissions programmés sur cet appareil. */
+    fun reminders(): List<JSONObject> = try {
+        val a = org.json.JSONArray(prefs.getString("reminders", "[]"))
+        (0 until a.length()).mapNotNull { a.optJSONObject(it) }.filter { it.optLong("start") > System.currentTimeMillis() - 3600_000 }
+    } catch (e: Exception) { emptyList() }
+
+    fun saveReminders(list: List<JSONObject>) {
+        val a = org.json.JSONArray(); list.forEach { a.put(it) }
+        prefs.edit().putString("reminders", a.toString()).apply(); version++
+    }
+
     var lastSync: Long
         get() = prefs.getLong("lastSync", 0)
         set(v) { prefs.edit().putLong("lastSync", v).apply() }
@@ -103,6 +128,17 @@ class Store(context: Context) {
         doc.optJSONObject("p")?.remove(id)
         save()
         return listOf(Change("profiles", JSONObject(sec.toString())), Change("p/$id", null))
+    }
+
+    /** Code parental (profil Enfants), commun à tous les appareils. */
+    fun pin(): String = doc.optJSONObject("profiles")?.optString("pin") ?: ""
+
+    fun setPin(pin: String): Change {
+        val sec = obj(doc, "profiles")
+        sec.put("pin", pin)
+        sec.put("ts", now())
+        save()
+        return Change("profiles", JSONObject(sec.toString()))
     }
 
     // ---------- Favoris (par profil) ----------

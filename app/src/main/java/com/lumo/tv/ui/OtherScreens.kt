@@ -40,6 +40,17 @@ fun SearchScreen(m: AppModel) {
     var q by remember { mutableStateOf("") }
     val fr = remember { FocusRequester() }
     LaunchedEffect(Unit) { try { fr.requestFocus() } catch (_: Exception) { } }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val speechIntent = remember {
+        android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "fr-FR")
+            .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Dis le nom d'un film, d'une série ou d'une chaîne")
+    }
+    val canSpeak = remember { ctx.packageManager.queryIntentActivities(speechIntent, 0).isNotEmpty() }
+    val voice = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { res ->
+        res.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { q = it }
+    }
     var res by remember { mutableStateOf(AppModel.SearchResults()) }
     var searching by remember { mutableStateOf(false) }
     LaunchedEffect(q) {
@@ -64,6 +75,13 @@ fun SearchScreen(m: AppModel) {
                 colors = lumoTextFieldColors(),
                 modifier = Modifier.padding(horizontal = pad).fillMaxWidth().focusRequester(fr)
             )
+            if (canSpeak) {
+                Row(Modifier.padding(horizontal = pad, vertical = 8.dp)) {
+                    LumoButton("Recherche vocale", primary = false) {
+                        try { voice.launch(speechIntent) } catch (_: Exception) { m.showToast("Recherche vocale indisponible") }
+                    }
+                }
+            }
         }
         if (searching && vods.isEmpty() && series.isEmpty() && live.isEmpty()) item { Empty("Recherche…") }
         else if (q.trim().length >= 2 && vods.isEmpty() && series.isEmpty() && live.isEmpty()) item { Empty("Aucun résultat pour « $q »") }
@@ -99,9 +117,18 @@ fun SettingsScreen(m: AppModel) {
     val dateFmt = remember { SimpleDateFormat("d MMMM yyyy", Locale.FRANCE) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = pad, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { Text("Réglages", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp)) }
-        item { SettingRow("Changer de profil", m.profile?.name) { m.reset(Screen.Profiles) } }
+        item { SettingRow("Changer de profil", m.profile?.name + if (m.kidsMode) " · profil Enfants" else "") { m.openProfiles() } }
+        if (m.kidsMode) return@LazyColumn
         item { SettingRow("Gérer les catégories", "Tout sélectionner, supprimer, restaurer") { m.go(Screen.Categories) } }
         if (!m.isTv) item { SettingRow("Connecter une TV", "Avec le code ou le QR code affiché sur la TV") { m.go(Screen.PairPhone) } }
+        if (!m.isTv) item {
+            SettingRow("Télécommande", "Piloter une TV où Lumo est ouvert") {
+                scope.launch {
+                    val tvs = m.activeTvs()
+                    if (tvs.isEmpty()) m.showToast("Aucune TV allumée avec Lumo ouvert") else m.go(Screen.Remote(tvs[0].id, tvs[0].name))
+                }
+            }
+        }
         item {
             SettingRow("Animations 3D", if (m.store.anim3d) "Activées (défilement des affiches, reflets)" else "Désactivées : plus léger pour un vieux Fire Stick") {
                 m.store.anim3d = !m.store.anim3d

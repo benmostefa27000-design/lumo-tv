@@ -40,6 +40,8 @@ fun LumoApp(m: AppModel) {
                 Screen.Categories -> CategoriesScreen(m)
                 Screen.DeletedCategories -> DeletedCategoriesScreen(m)
                 Screen.PairPhone -> PairPhoneScreen(m)
+                Screen.PinCheck -> PinCheckScreen(m)
+                is Screen.Remote -> RemoteScreen(m, s.deviceId, s.name)
             }
 
             m.toast?.let { t ->
@@ -124,7 +126,7 @@ private fun TvTopBar(m: AppModel) {
         Spacer(Modifier.weight(1f))
         IconFocus(Icons.Default.Search, "Rechercher") { m.go(Screen.Search) }
         IconFocus(Icons.Default.Settings, "Réglages") { m.tab = Tab.Settings }
-        ProfileBadge(m) { m.reset(Screen.Profiles) }
+        ProfileBadge(m) { m.openProfiles() }
     }
 }
 
@@ -137,7 +139,7 @@ private fun PhoneTopBar(m: AppModel) {
         LumoLogo(28)
         Spacer(Modifier.weight(1f))
         IconFocus(Icons.Default.Search, "Rechercher") { m.go(Screen.Search) }
-        ProfileBadge(m) { m.reset(Screen.Profiles) }
+        ProfileBadge(m) { m.openProfiles() }
         Spacer(Modifier.width(8.dp))
     }
 }

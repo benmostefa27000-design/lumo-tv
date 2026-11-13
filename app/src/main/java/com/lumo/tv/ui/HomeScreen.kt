@@ -44,10 +44,13 @@ fun HomeScreen(m: AppModel) {
         return
     }
     val cardW = if (m.isTv) 140.dp else 108.dp
-    val vodDel = m.deleted("vod")
-    val serDel = m.deleted("series")
-    val vods = remember(m.vods, vodDel) { m.vods.filter { it.catId !in vodDel } }
-    val series = remember(m.series, serDel) { m.series.filter { it.catId !in serDel } }
+    val vodOk = m.allowedCatIds("vod")
+    val serOk = m.allowedCatIds("series")
+    val vods = remember(m.vods, vodOk) { m.vods.filter { it.catId in vodOk } }
+    val series = remember(m.series, serOk) { m.series.filter { it.catId in serOk } }
+    val favLive = run { m.store.version; m.store.favs(m.pid, "live") }
+    val liveOk = m.allowedCatIds("live")
+    val myChannels = remember(m.live, favLive, liveOk) { m.live.filter { it.id in favLive && it.catId in liveOk } }
     val recentVods = remember(vods) { vods.sortedByDescending { it.added }.take(40) }
     val recentSeries = remember(series) { series.sortedByDescending { it.modified }.take(40) }
     val vodsById = remember(m.vods) { m.vods.associateBy { it.id } }
@@ -64,6 +67,11 @@ fun HomeScreen(m: AppModel) {
         if (progress.isNotEmpty()) item {
             RowSection("Reprendre la lecture") {
                 items(progress, key = { it.key }) { p -> ProgressCard(m, p, cardW, vodsById, seriesById) }
+            }
+        }
+        if (myChannels.isNotEmpty()) item(key = "mych") {
+            RowSection("Mes chaînes") {
+                items(myChannels, key = { "ch" + it.id }) { c -> ChannelCard(m, c, myChannels) }
             }
         }
         val myList = favVod.mapNotNull { vodsById[it] }.map { Triple(it.id, it.name, it.icon) to it } +
@@ -197,6 +205,22 @@ private fun Hero(m: AppModel, v: Vod) {
                     m.go(Screen.MovieDetail(v))
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ChannelCard(m: AppModel, c: com.lumo.tv.data.LiveStream, list: List<com.lumo.tv.data.LiveStream>) {
+    LaunchedEffect(c.id) { m.loadNow(c.id) }
+    val w = if (m.isTv) 220.dp else 170.dp
+    FocusBox(modifier = Modifier.width(w), onClick = { m.go(Screen.Player(com.lumo.tv.Playable.Live(list, list.indexOf(c).coerceAtLeast(0)))) }) { _ ->
+        Column(Modifier.fillMaxWidth().background(C.Card).padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(Modifier.fillMaxWidth().height(if (m.isTv) 90.dp else 70.dp).background(Color(0xFF1F1F1F)), contentAlignment = Alignment.Center) {
+                Text(c.name.take(3), color = C.Dim)
+                if (c.icon.isNotBlank()) AsyncImage(model = c.icon, contentDescription = c.name, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(8.dp))
+            }
+            Text(c.name, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(m.nowPlaying[c.id]?.ifBlank { null } ?: "En direct", color = C.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

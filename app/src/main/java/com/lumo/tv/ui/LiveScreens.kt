@@ -38,6 +38,7 @@ import java.util.*
 
 private const val FAV = "__fav"
 private const val ALL = "__all"
+private const val REPLAY = "__replay"
 
 @Composable
 fun LiveScreen(m: AppModel) {
@@ -53,10 +54,12 @@ fun LiveScreen(m: AppModel) {
         when (sel) {
             FAV -> m.live.filter { it.id in favs }
             ALL -> m.live.filter { it.catId in visibleIds }
+            REPLAY -> m.live.filter { it.archive && it.catId in visibleIds }
             else -> m.live.filter { it.catId == sel }
         }
     }
-    val catItems = listOf(FAV to "★ Favoris") + cats.map { it.id to it.name }
+    val hasReplay = remember(m.live, visibleIds) { m.live.any { it.archive && it.catId in visibleIds } }
+    val catItems = listOf(FAV to "★ Favoris") + (if (hasReplay) listOf(REPLAY to "⟲ Rattrapage") else emptyList()) + cats.map { it.id to it.name }
 
     if (m.isTv) {
         Row(Modifier.fillMaxSize().padding(start = 40.dp, end = 40.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -121,8 +124,10 @@ private fun ChannelRow(m: AppModel, s: LiveStream, list: List<LiveStream>, index
         IconFocus(Icons.Default.Star, if (fav) "Retirer des favoris" else "Ajouter aux favoris", tint = if (fav) Color(0xFFF2B33D) else Color(0xFF5A5A5A)) {
             m.toggleFav("live", s.id)
         }
-        IconFocus(Icons.Default.DateRange, "Guide et rattrapage", tint = if (s.archive) Color.White else C.Dim) {
-            m.go(Screen.ChannelGuide(s, list))
+        if (s.archive) {
+            IconFocus(Icons.Default.DateRange, "Rattrapage") { m.go(Screen.ChannelGuide(s, list)) }
+        } else {
+            Spacer(Modifier.size(44.dp))
         }
     }
 }
@@ -140,6 +145,7 @@ fun ChannelGuideScreen(m: AppModel, s: LiveStream, list: List<LiveStream>) {
         }
     }
     val now = System.currentTimeMillis()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     val pad = if (m.isTv) 48.dp else 16.dp
     Column(Modifier.fillMaxSize().padding(horizontal = pad, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -151,6 +157,7 @@ fun ChannelGuideScreen(m: AppModel, s: LiveStream, list: List<LiveStream>) {
             LumoButton("Direct", requester = rememberAutoFocus(m.isTv), icon = { Icon(Icons.Default.PlayArrow, null, tint = Color.Black) }) {
                 m.go(Screen.Player(Playable.Live(list, list.indexOfFirst { it.id == s.id }.coerceAtLeast(0))))
             }
+            if (!m.isTv) SendToTvButton(m) { org.json.JSONObject().put("type", "play_live").put("id", s.id) }
         }
         val e = epg
         when {
@@ -174,6 +181,7 @@ fun ChannelGuideScreen(m: AppModel, s: LiveStream, list: List<LiveStream>) {
                             when {
                                 live -> m.go(Screen.Player(Playable.Live(list, list.indexOfFirst { it.id == s.id }.coerceAtLeast(0))))
                                 canReplay -> m.go(Screen.Player(Playable.Replay(s, p)))
+                                !past && !m.isTv -> { askNotificationPermission(ctx); m.toggleReminder(s, p) }
                                 else -> m.showToast(if (past) "Pas disponible en rattrapage" else "Pas encore diffusé")
                             }
                         }) { f ->
@@ -188,6 +196,8 @@ fun ChannelGuideScreen(m: AppModel, s: LiveStream, list: List<LiveStream>) {
                                     if (p.desc.isNotBlank() && (f || live)) Text(p.desc, color = C.Sub, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 }
                                 when {
+                                    !past && !live && m.hasReminder(s.id, p.start) -> Text("Rappel ✓", color = C.Green, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    !past && !live && !m.isTv -> Text("Me rappeler", color = C.Dim, fontSize = 12.sp)
                                     live -> Text("EN DIRECT", color = C.Red, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     canReplay -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         Icon(Icons.Default.Refresh, null, tint = C.Red, modifier = Modifier.size(16.dp))
@@ -201,5 +211,14 @@ fun ChannelGuideScreen(m: AppModel, s: LiveStream, list: List<LiveStream>) {
                 }
             }
         }
+    }
+}
+
+fun askNotificationPermission(ctx: android.content.Context) {
+    val act = ctx as? android.app.Activity ?: return
+    if (android.os.Build.VERSION.SDK_INT >= 33 &&
+        androidx.core.content.ContextCompat.checkSelfPermission(act, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+    ) {
+        androidx.core.app.ActivityCompat.requestPermissions(act, arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 7)
     }
 }

@@ -28,7 +28,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.media3.common.C as MC
 import androidx.media3.common.MediaItem
+import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -127,7 +129,31 @@ fun PlayerScreen(m: AppModel, start: Playable) {
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(ds))
             .build()
-            .apply { playWhenReady = true }
+            .apply {
+                playWhenReady = true
+                val b = trackSelectionParameters.buildUpon()
+                m.store.prefAudio.takeIf { it.isNotBlank() }?.let { b.setPreferredAudioLanguage(it) }
+                when (val t = m.store.prefText) {
+                    "" -> {}
+                    "off" -> b.setTrackTypeDisabled(MC.TRACK_TYPE_TEXT, true)
+                    else -> b.setPreferredTextLanguage(t)
+                }
+                trackSelectionParameters = b.build()
+            }
+    }
+
+    // Minuteur de sommeil
+    var sleepAt by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(sleepAt) {
+        val at = sleepAt ?: return@LaunchedEffect
+        delay((at - System.currentTimeMillis()).coerceAtLeast(0))
+        player.pause()
+        m.back()
+    }
+
+    // Arrière-plan : pause (sauf mini-lecteur)
+    LaunchedEffect(m.appStopped, m.pip) {
+        if (m.appStopped && !m.pip) player.pause()
     }
 
     fun saveProgress(finished: Boolean = false) {
@@ -174,6 +200,25 @@ fun PlayerScreen(m: AppModel, start: Playable) {
         }
     }
 
+    // Ordres envoyés depuis la télécommande du téléphone
+    LaunchedEffect(Unit) {
+        m.remoteEvents.collect { a ->
+            when (a) {
+                "playpause" -> if (player.isPlaying) player.pause() else player.play()
+                "fwd" -> player.seekTo(player.currentPosition + 30_000)
+                "rew" -> player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0))
+                "next", "prev" -> {
+                    val dir = if (a == "next") 1 else -1
+                    when (val it = item) {
+                        is Playable.Live -> { val n = it.list.size; item = it.copy(index = ((it.index + dir) % n + n) % n) }
+                        is Playable.Ep -> { val ni = it.index + dir; if (ni in it.episodes.indices) item = it.copy(index = ni, fromStart = true) }
+                        else -> {}
+                    }
+                }
+            }
+        }
+    }
+
     // Sauvegarde régulière de la position
     LaunchedEffect(Unit) {
         while (true) { delay(10_000); if (player.isPlaying) saveProgress() }
@@ -191,6 +236,18 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                         m.showToast("Épisode suivant")
                     }
                 }
+            }
+
+            override fun onTrackSelectionParametersChanged(parameters: TrackSelectionParameters) {
+                // Retenir la langue choisie par l'utilisateur dans le lecteur
+                for (o in parameters.overrides.values) {
+                    val g = o.mediaTrackGroup
+                    val lang = o.trackIndices.firstOrNull()?.let { g.getFormat(it).language } ?: continue
+                    if (g.type == MC.TRACK_TYPE_AUDIO) m.store.prefAudio = lang
+                    if (g.type == MC.TRACK_TYPE_TEXT) m.store.prefText = lang
+                }
+                if (MC.TRACK_TYPE_TEXT in parameters.disabledTrackTypes) m.store.prefText = "off"
+                else if (m.store.prefText == "off") m.store.prefText = ""
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -259,6 +316,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 }
             },
             update = { v ->
+                v.useController = !m.pip
                 val isLive = item is Playable.Live
                 v.setShowRewindButton(!isLive)
                 v.setShowFastForwardButton(!isLive)
@@ -277,22 +335,37 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             modifier = Modifier.fillMaxSize()
         )
 
-        if (controlsVisible || errorMsg != null) {
+        if (!m.pip && (controlsVisible || errorMsg != null)) {
             Row(
                 Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent))).padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 IconFocus(Icons.AutoMirrored.Filled.ArrowBack, "Retour") { m.back() }
-                Column {
+                Column(Modifier.weight(1f)) {
                     Text(r.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     val sub = if (item is Playable.Live && cur != null) "En direct · ${cur.title}" else r.subtitle
                     if (sub.isNotBlank()) Text(sub, color = C.Sub, fontSize = 14.sp, maxLines = 1)
                 }
+                val left = sleepAt?.let { ((it - clock) / 60000).coerceAtLeast(0) }
+                com.lumo.tv.ui.FocusBox(shape = RoundedCornerShape(50), scale = 1.06f, onClick = {
+                    val steps = listOf<Long?>(30, 60, 90, null)
+                    val cur = left?.let { l -> steps.firstOrNull { st -> st != null && st >= l + 1 } }
+                    val idx = if (sleepAt == null) 0 else (steps.indexOf(cur) + 1).coerceAtMost(steps.lastIndex)
+                    sleepAt = steps[idx]?.let { min -> System.currentTimeMillis() + min * 60_000 }
+                    clock = System.currentTimeMillis()
+                    m.showToast(if (sleepAt == null) "Minuteur coupé" else "Arrêt dans ${steps[idx]} min")
+                }) { _ ->
+                    Text(
+                        if (left == null) "Minuteur" else "Arrêt dans $left min",
+                        color = Color.White, fontSize = 14.sp,
+                        modifier = Modifier.background(Color(0x55FFFFFF), RoundedCornerShape(50)).padding(horizontal = 14.dp, vertical = 8.dp)
+                    )
+                }
             }
         }
 
-        if (item is Playable.Live && (controlsVisible || banner != null)) {
+        if (!m.pip && item is Playable.Live && (controlsVisible || banner != null)) {
             Column(
                 Modifier.align(Alignment.BottomStart).padding(start = 24.dp, end = 24.dp, bottom = if (controlsVisible) 72.dp else 28.dp)
                     .widthIn(max = 640.dp).fillMaxWidth()

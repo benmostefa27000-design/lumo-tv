@@ -40,7 +40,11 @@ sealed interface Screen {
     data object Categories : Screen
     data object DeletedCategories : Screen
     data object PairPhone : Screen
+    data object PinCheck : Screen
+    data class Remote(val deviceId: String, val name: String) : Screen
 }
+
+data class TvDevice(val id: String, val name: String)
 
 data class UpdateInfo(val version: Int, val url: String)
 
@@ -90,19 +94,29 @@ class AppModel(private val context: Context) {
     var syncState by mutableStateOf(if (sync.enabled) "En attente" else "Désactivée")
     var update by mutableStateOf<UpdateInfo?>(null)
 
+    /** Mini-lecteur (image dans l'image) et appli en arrière-plan. */
+    var pip by mutableStateOf(false)
+    var appStopped by mutableStateOf(false)
+
+    /** Ordres de télécommande reçus du téléphone (lecture/pause, chaîne…). */
+    val remoteEvents = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 8)
+
     init {
         val acc = store.account
         if (acc == null) {
             stack.add(Screen.Login)
         } else {
             client = XtreamClient(acc, http, context.cacheDir)
-            stack.add(Screen.Profiles)
+            // Profil Enfants verrouillé : on reste dessus au redémarrage.
+            val p = profile
+            stack.add(if (p != null && p.kids && store.pin().isNotEmpty()) Screen.Main else Screen.Profiles)
             loadCatalog(false)
             scope.launch(Dispatchers.IO) {
                 try { val a = client?.auth(); withContext(Dispatchers.Main) { auth = a } } catch (_: Exception) { }
             }
         }
         startSyncLoop()
+        if (isTv) startCommandListener()
         checkUpdate(silent = true)
     }
 
@@ -218,10 +232,21 @@ class AppModel(private val context: Context) {
     fun deleted(kind: String): Set<String> { store.version; return store.deletedCats(kind) }
     fun setDeleted(kind: String, ids: Set<String>) { commit(store.setDeletedCats(kind, ids)) }
 
+    val kidsMode: Boolean get() = profile?.kids == true
+
+    private val kidsPattern = Regex("(kid|enfant|jeunesse|junior|animation|anime|dessin|cartoon|famille|family|disney|pixar|toon|nick|gulli|tiji|piwi|baby)", RegexOption.IGNORE_CASE)
+
     fun visibleCats(kind: String): List<Category> {
         val del = deleted(kind)
         val cats = when (kind) { "live" -> liveCats; "vod" -> vodCats; else -> seriesCats }
-        return cats.filter { it.id !in del }
+        return cats.filter { it.id !in del && (!kidsMode || kidsPattern.containsMatchIn(it.name)) }
+    }
+
+    fun allowedCatIds(kind: String): Set<String> = visibleCats(kind).map { it.id }.toSet()
+
+    /** Changer de profil : en profil Enfants, il faut le code parental. */
+    fun openProfiles() {
+        if (kidsMode && store.pin().isNotEmpty()) go(Screen.PinCheck) else reset(Screen.Profiles)
     }
 
     fun progressList(): List<Progress> { store.version; return store.progress(pid) }
@@ -237,6 +262,8 @@ class AppModel(private val context: Context) {
                 val remote = sync.getObject("lumo/${acc.key()}") ?: JSONObject()
                 val push = withContext(Dispatchers.Main) { store.merge(remote) }
                 push.forEach { sync.apply(acc.key(), it) }
+                val devName = (if (isTv) "TV " else "") + android.os.Build.MODEL
+                sync.put("lumo/${acc.key()}/devices/${store.deviceId}", JSONObject().put("name", devName).put("tv", isTv).put("ts", System.currentTimeMillis()))
                 store.lastSync = System.currentTimeMillis()
                 withContext(Dispatchers.Main) { syncState = "OK" }
             } catch (e: Exception) {
@@ -316,7 +343,7 @@ class AppModel(private val context: Context) {
     /** Recherche hors du fil principal, sur des titres normalisés une seule fois. */
     suspend fun search(query: String): SearchResults {
         val v = vods; val s = series; val l = live
-        val dv = deleted("vod"); val ds = deleted("series"); val dl = deleted("live")
+        val av = allowedCatIds("vod"); val aser = allowedCatIds("series"); val al = allowedCatIds("live")
         return withContext(Dispatchers.Default) {
             val q = norm(query.trim())
             if (q.length < 2) return@withContext SearchResults()
@@ -326,15 +353,151 @@ class AppModel(private val context: Context) {
                 index = idx
             }
             SearchResults(
-                vods = idx.vods.asSequence().filter { it.second.catId !in dv && it.first.contains(q) }.map { it.second }.take(60).toList(),
-                series = idx.series.asSequence().filter { it.second.catId !in ds && it.first.contains(q) }.map { it.second }.take(60).toList(),
-                live = idx.live.asSequence().filter { it.second.catId !in dl && it.first.contains(q) }.map { it.second }.take(30).toList()
+                vods = idx.vods.asSequence().filter { it.second.catId in av && it.first.contains(q) }.map { it.second }.take(60).toList(),
+                series = idx.series.asSequence().filter { it.second.catId in aser && it.first.contains(q) }.map { it.second }.take(60).toList(),
+                live = idx.live.asSequence().filter { it.second.catId in al && it.first.contains(q) }.map { it.second }.take(30).toList()
             )
         }
     }
 
     /** Prépare l'index de recherche en avance, dès que le catalogue est chargé. */
     fun warmSearch() { scope.launch { search("zz") } }
+
+    // ---------- Regarder sur la TV / télécommande ----------
+
+    suspend fun activeTvs(): List<TvDevice> = withContext(Dispatchers.IO) {
+        val acc = store.account ?: return@withContext emptyList()
+        if (!sync.enabled) return@withContext emptyList()
+        try {
+            val o = sync.getObject("lumo/${acc.key()}/devices") ?: return@withContext emptyList()
+            val now = System.currentTimeMillis()
+            o.keys().asSequence().mapNotNull { id ->
+                val d = o.optJSONObject(id) ?: return@mapNotNull null
+                if (id == store.deviceId || !d.optBoolean("tv") || now - d.optLong("ts") > 3 * 60_000) null
+                else TvDevice(id, d.optString("name").ifBlank { "TV" })
+            }.toList()
+        } catch (_: Exception) { emptyList() }
+    }
+
+    suspend fun sendCommand(tvId: String, cmd: JSONObject): Boolean = withContext(Dispatchers.IO) {
+        val acc = store.account ?: return@withContext false
+        try {
+            sync.put("lumo/${acc.key()}/cmd/$tvId", cmd.put("ts", System.currentTimeMillis()).put("profile", pid))
+            true
+        } catch (_: Exception) { false }
+    }
+
+    /** Sur la TV : écoute en continu les ordres envoyés par le téléphone. */
+    private fun startCommandListener() {
+        if (!sync.enabled) return
+        scope.launch(Dispatchers.IO) {
+            val streamHttp = http.newBuilder().readTimeout(0, TimeUnit.MILLISECONDS).build()
+            var lastTs = System.currentTimeMillis()
+            while (isActive) {
+                val acc = store.account
+                if (acc == null) { delay(5000); continue }
+                val path = "lumo/${acc.key()}/cmd/${store.deviceId}"
+                try {
+                    val req = Request.Builder().url("${BuildConfig.SYNC_URL}/$path.json").header("Accept", "text/event-stream").build()
+                    streamHttp.newCall(req).execute().use { r ->
+                        val src = r.body?.source() ?: return@use
+                        var event = ""
+                        while (isActive && !src.exhausted()) {
+                            val line = src.readUtf8Line() ?: break
+                            if (line.startsWith("event:")) event = line.substringAfter(":").trim()
+                            else if (line.startsWith("data:") && (event == "put" || event == "patch")) {
+                                val data = line.substringAfter(":").trim()
+                                val o = try { JSONObject(data) } catch (_: Exception) { null } ?: continue
+                                val cmd = o.optJSONObject("data") ?: continue
+                                val ts = cmd.optLong("ts")
+                                if (ts <= lastTs - 60_000 || ts == lastTs) continue
+                                lastTs = ts
+                                try { sync.delete(path) } catch (_: Exception) { }
+                                withContext(Dispatchers.Main) { handleCommand(cmd) }
+                            }
+                        }
+                    }
+                } catch (_: Exception) { }
+                delay(3000)
+            }
+        }
+    }
+
+    private fun handleCommand(c: JSONObject) {
+        c.optString("profile").takeIf { it.isNotBlank() }?.let { p ->
+            if (store.profiles().any { it.id == p } && !(kidsMode && store.pin().isNotEmpty())) store.profileId = p
+        }
+        when (c.optString("type")) {
+            "play_vod" -> {
+                val v = vods.firstOrNull { it.id == c.optString("id") }
+                    ?: Vod(c.optString("id"), c.optString("title"), c.optString("img"), "", "", c.optString("ext", "mp4"), 0)
+                openPlayer(Playable.Movie(v))
+            }
+            "play_live" -> {
+                val s = live.firstOrNull { it.id == c.optString("id") } ?: return
+                val list = live.filter { it.catId == s.catId }
+                openPlayer(Playable.Live(list, list.indexOf(s).coerceAtLeast(0)))
+            }
+            "play_ep" -> {
+                val sid = c.optString("series"); val eid = c.optString("id")
+                scope.launch {
+                    val info = withContext(Dispatchers.IO) { try { client?.seriesInfo(sid) } catch (_: Exception) { null } } ?: return@launch
+                    val ser = series.firstOrNull { it.id == sid } ?: Series(sid, c.optString("title"), c.optString("img"), "", "", "", "", 0)
+                    for ((_, eps) in info.episodes) {
+                        val idx = eps.indexOfFirst { it.id == eid }
+                        if (idx >= 0) { openPlayer(Playable.Ep(ser, eps, idx)); break }
+                    }
+                }
+            }
+            "remote" -> {
+                when (val a = c.optString("action")) {
+                    "volup" -> volume(android.media.AudioManager.ADJUST_RAISE)
+                    "voldown" -> volume(android.media.AudioManager.ADJUST_LOWER)
+                    "mute" -> volume(android.media.AudioManager.ADJUST_TOGGLE_MUTE)
+                    "stop" -> if (current is Screen.Player) back()
+                    else -> remoteEvents.tryEmit(a)
+                }
+            }
+        }
+    }
+
+    private fun openPlayer(p: Playable) {
+        if (current is Screen.Player) stack.removeAt(stack.lastIndex)
+        if (stack.isEmpty() || current == Screen.Login || current == Screen.Profiles) { tab = Tab.Home; reset(Screen.Main) }
+        go(Screen.Player(p))
+        showToast("Lancé depuis le téléphone")
+    }
+
+    private fun volume(dir: Int) {
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, dir, android.media.AudioManager.FLAG_SHOW_UI)
+    }
+
+    fun playLiveById(id: String) {
+        val s = live.firstOrNull { it.id == id } ?: return
+        val list = live.filter { it.catId == s.catId }
+        openPlayer(Playable.Live(list, list.indexOf(s).coerceAtLeast(0)))
+    }
+
+    // ---------- Rappels ----------
+
+    fun hasReminder(streamId: String, start: Long): Boolean { store.version; return store.reminders().any { it.optString("stream") == streamId && it.optLong("start") == start } }
+
+    fun toggleReminder(s: LiveStream, e: EpgEntry) {
+        val list = store.reminders().toMutableList()
+        val existing = list.firstOrNull { it.optString("stream") == s.id && it.optLong("start") == e.start }
+        val id = (s.id + e.start).hashCode()
+        if (existing != null) {
+            list.remove(existing)
+            Reminders.cancel(context, id)
+            showToast("Rappel retiré")
+        } else {
+            list.add(JSONObject().put("stream", s.id).put("start", e.start).put("title", e.title).put("channel", s.name))
+            Reminders.schedule(context, id, s.id, s.name, e.title, e.start)
+            showToast("Rappel 5 min avant le début")
+        }
+        store.saveReminders(list)
+    }
 
     // ---------- Mises à jour ----------
 
