@@ -141,6 +141,13 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     val rootFr = remember { androidx.compose.ui.focus.FocusRequester() }
     var banner by remember { mutableStateOf<String?>(null) }
     var chanList by remember { mutableStateOf(false) }
+    var videoMode by remember { mutableIntStateOf(m.store.videoMode) }
+    val modeNames = listOf("Adapté", "Plein écran", "Étiré", "Zoom 120 %", "Zoom 135 %")
+    fun nextVideoMode() {
+        videoMode = (videoMode + 1) % modeNames.size
+        m.store.videoMode = videoMode
+        m.showToast("Image : " + modeNames[videoMode])
+    }
     var epgNow by remember { mutableStateOf<List<EpgEntry>>(emptyList()) }
     var epgLoading by remember { mutableStateOf(true) }
     var clock by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -487,6 +494,16 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 }
             },
             update = { v ->
+                v.resizeMode = when (videoMode) {
+                    1, 3, 4 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    2 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
+                    else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                }
+                val scale = when (videoMode) { 3 -> 1.2f; 4 -> 1.35f; else -> 1f }
+                v.clipChildren = true
+                v.resources.getIdentifier("exo_content_frame", "id", v.context.packageName).takeIf { id -> id != 0 }
+                    ?.let { id -> v.findViewById<android.view.View>(id) }
+                    ?.let { f -> f.scaleX = scale; f.scaleY = scale }
                 val blocked = errorMsg != null || panel || m.isTv
                 v.onMenu = { panel = !panel }
                 v.useController = !m.pip && !blocked
@@ -526,7 +543,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 }
                 if (m.isTv) {
                     Text(
-                        "OK : pause · Menu ou OK long : synchro du son et minuteur" + if (item is Playable.Live) " · ▲▼ : chaînes" else " · ◀▶ : −10 s / +30 s",
+                        "OK : pause · Menu ou OK long : son, image et minuteur" + if (item is Playable.Live) " · ▲▼ : chaînes" else " · ◀▶ : −10 s / +30 s",
                         color = C.Sub, fontSize = 13.sp
                     )
                 } else if (item is Playable.Live && (item as Playable.Live).list.size > 1) {
@@ -536,6 +553,12 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                             modifier = Modifier.background(Color(0x55FFFFFF), RoundedCornerShape(50)).padding(horizontal = 14.dp, vertical = 8.dp)
                         )
                     }
+                }
+                if (!m.isTv) com.lumo.tv.ui.FocusBox(shape = RoundedCornerShape(50), scale = 1.06f, onClick = { nextVideoMode() }) { _ ->
+                    Text(
+                        "⤢ " + modeNames[videoMode], color = Color.White, fontSize = 14.sp,
+                        modifier = Modifier.background(Color(0x55FFFFFF), RoundedCornerShape(50)).padding(horizontal = 14.dp, vertical = 8.dp)
+                    )
                 }
                 if (!m.isTv) com.lumo.tv.ui.FocusBox(shape = RoundedCornerShape(50), scale = 1.06f, onClick = { panel = !panel }) { _ ->
                     Text(
@@ -718,6 +741,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     LumoButton("Remettre à 0", primary = false) { setDelay(0) }
                     LumoButton("Fermer", primary = false) { panel = false }
                 }
+                if (m.isTv) LumoButton("Image : " + modeNames[videoMode], primary = false) { nextVideoMode() }
                 if (m.isTv) {
                     val l = sleepAt?.let { ((it - clock) / 60000).coerceAtLeast(0) }
                     LumoButton(if (l == null) "Minuteur : aucun" else "Minuteur : arrêt dans $l min", primary = false) {

@@ -34,6 +34,11 @@ class Store(context: Context) {
         get() = prefs.getString("liveFormat", "ts") ?: "ts"
         set(v) { prefs.edit().putString("liveFormat", v).apply(); version++ }
 
+    /** Format de l'image du lecteur (0 adapté, 1 plein écran, 2 étiré, 3 zoom 120 %, 4 zoom 135 %). */
+    var videoMode: Int
+        get() = prefs.getInt("videoMode", 0)
+        set(v) { prefs.edit().putInt("videoMode", v).apply() }
+
     /** Défilement 3D et reflets (à couper si un vieux Fire Stick rame). */
     var anim3d: Boolean
         get() = prefs.getBoolean("anim3d", true)
