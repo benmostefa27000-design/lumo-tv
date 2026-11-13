@@ -322,7 +322,9 @@ class AppModel(private val context: Context) {
         scope.launch(Dispatchers.IO) {
             val title = try {
                 val now = System.currentTimeMillis()
-                c.shortEpg(streamId, 2).firstOrNull { it.end > now }?.title ?: ""
+                val st = live.firstOrNull { it.id == streamId }
+                val list = if (st != null) c.epgFor(st, full = false) else c.shortEpg(streamId, 2)
+                list.firstOrNull { it.start <= now && it.end > now }?.title ?: list.firstOrNull { it.end > now }?.title ?: ""
             } catch (_: Exception) { "" }
             withContext(Dispatchers.Main) { nowPlaying[streamId] = title; nowPending.remove(streamId) }
         }

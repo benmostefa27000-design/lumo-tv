@@ -141,7 +141,7 @@ fun ChannelGuideScreen(m: AppModel, s: LiveStream, list: List<LiveStream>) {
     var error by remember { mutableStateOf(false) }
     LaunchedEffect(s.id) {
         epg = withContext(Dispatchers.IO) {
-            try { m.client?.fullEpg(s.id) ?: emptyList() } catch (_: Exception) { error = true; emptyList() }
+            try { m.client?.epgFor(s, full = true) ?: emptyList() } catch (_: Exception) { error = true; emptyList() }
         }
     }
     val now = System.currentTimeMillis()

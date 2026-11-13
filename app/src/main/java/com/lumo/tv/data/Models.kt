@@ -71,7 +71,8 @@ data class LiveStream(
     val icon: String,
     val catId: String,
     val archive: Boolean,
-    val archiveDays: Int
+    val archiveDays: Int,
+    val epgId: String = ""
 )
 
 data class Vod(

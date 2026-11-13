@@ -99,12 +99,12 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     val client = m.client ?: return
 
     // Programme en cours de la chaîne (rafraîchi chaque minute)
-    val liveId = (item as? Playable.Live)?.let { it.list[it.index].id }
-    LaunchedEffect(liveId) {
+    val liveStream = (item as? Playable.Live)?.let { it.list[it.index] }
+    LaunchedEffect(liveStream?.id) {
         epgNow = emptyList()
-        if (liveId == null) return@LaunchedEffect
+        val st = liveStream ?: return@LaunchedEffect
         while (true) {
-            val list = withContext(Dispatchers.IO) { try { client.shortEpg(liveId, 4) } catch (_: Exception) { emptyList() } }
+            val list = withContext(Dispatchers.IO) { try { client.epgFor(st, full = false) } catch (_: Exception) { emptyList() } }
             if (list.isNotEmpty()) epgNow = list
             clock = System.currentTimeMillis()
             repeat(4) { delay(15_000); clock = System.currentTimeMillis() }

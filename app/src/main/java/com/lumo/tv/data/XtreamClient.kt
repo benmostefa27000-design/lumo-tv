@@ -104,9 +104,10 @@ class XtreamClient(val acc: Account, private val http: OkHttpClient, private val
                 icon = it.s("stream_icon"),
                 catId = cat,
                 archive = it.i("tv_archive") == 1,
-                archiveDays = it.i("tv_archive_duration")
+                archiveDays = it.i("tv_archive_duration"),
+                epgId = it.s("epg_channel_id").trim()
             )
-        }
+        }.also { list -> synchronized(epgIds) { epgIds.clear(); list.forEach { s -> if (s.epgId.isNotEmpty()) epgIds.add(s.epgId.lowercase()) } } }
 
     fun vods(force: Boolean = false): List<Vod> =
         array(cached("vod", api("get_vod_streams"), SIX_HOURS, force)).mapNotNull {
@@ -227,6 +228,104 @@ class XtreamClient(val acc: Account, private val http: OkHttpClient, private val
 
     fun fullEpg(streamId: String): List<EpgEntry> =
         parseEpg(fetch(api("get_simple_data_table", "&stream_id=$streamId")))
+
+    // ---------- Guide complet XMLTV (comme IPTV Smarters), en secours ----------
+
+    private val epgIds = HashSet<String>()
+    private var xmltv: Map<String, List<EpgEntry>>? = null
+    private var xmltvFailedAt = 0L
+    private val xmlLock = Any()
+
+    /** Programme d'une chaîne : API rapide d'abord, puis guide XMLTV si elle ne donne rien. */
+    fun epgFor(s: LiveStream, full: Boolean): List<EpgEntry> {
+        val now = System.currentTimeMillis()
+        val api = try { if (full) fullEpg(s.id) else shortEpg(s.id, 4) } catch (e: Exception) { emptyList() }
+        val ok = if (full) api.any { it.end > now - 3600_000 } else api.any { it.end > now }
+        if (ok || s.epgId.isBlank()) return api
+        val x = xmltvFor(s.epgId)
+        if (x.isEmpty()) return api
+        return if (full) x else x.filter { it.end > now }.take(4)
+    }
+
+    fun xmltvFor(epgId: String): List<EpgEntry> {
+        val map = synchronized(xmlLock) {
+            if (xmltv == null && System.currentTimeMillis() - xmltvFailedAt > 10 * 60_000) {
+                xmltv = try { loadXmltv() } catch (e: Exception) { xmltvFailedAt = System.currentTimeMillis(); null }
+            }
+            xmltv
+        } ?: return emptyList()
+        return map[epgId.lowercase()].orEmpty()
+    }
+
+    private fun loadXmltv(): Map<String, List<EpgEntry>> {
+        val dir = File(cacheDir, "xtream").apply { mkdirs() }
+        val f = File(dir, "${acc.key()}_xmltv.xml")
+        if (!f.exists() || System.currentTimeMillis() - f.lastModified() > 12 * 3600_000L || f.length() < 100) {
+            val tmp = File(dir, "${acc.key()}_xmltv.tmp")
+            val req = Request.Builder().url("${acc.server}/xmltv.php?username=${enc(acc.user)}&password=${enc(acc.pass)}")
+                .header("User-Agent", USER_AGENT).build()
+            val longHttp = http.newBuilder().readTimeout(5, java.util.concurrent.TimeUnit.MINUTES).build()
+            longHttp.newCall(req).execute().use { r ->
+                if (!r.isSuccessful) throw IOException("HTTP ${r.code}")
+                r.body!!.byteStream().use { input -> tmp.outputStream().use { input.copyTo(it) } }
+            }
+            tmp.renameTo(f)
+        }
+        val wanted = synchronized(epgIds) { HashSet(epgIds) }
+        val now = System.currentTimeMillis()
+        val minEnd = now - 8 * 86_400_000L
+        val maxStart = now + 2 * 86_400_000L
+        val out = HashMap<String, MutableList<EpgEntry>>()
+        val fmtZ = SimpleDateFormat("yyyyMMddHHmmss Z", Locale.US)
+        val fmt = SimpleDateFormat("yyyyMMddHHmmss", Locale.US).apply { timeZone = TimeZone.getTimeZone(serverTimezone) }
+        fun time(v: String?): Long {
+            if (v.isNullOrBlank()) return 0
+            return try { fmtZ.parse(v.trim())!!.time } catch (e: Exception) {
+                try { fmt.parse(v.trim().take(14))!!.time } catch (e2: Exception) { 0 }
+            }
+        }
+        val parser = android.util.Xml.newPullParser()
+        f.inputStream().buffered().use { input ->
+            parser.setInput(input, null)
+            var channel: String? = null
+            var start = 0L; var end = 0L
+            var title = ""; var desc = ""
+            var field: String? = null
+            var event = parser.eventType
+            while (event != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                when (event) {
+                    org.xmlpull.v1.XmlPullParser.START_TAG -> when (parser.name) {
+                        "programme" -> {
+                            val ch = parser.getAttributeValue(null, "channel")?.lowercase()
+                            channel = if (ch != null && (wanted.isEmpty() || ch in wanted)) ch else null
+                            if (channel != null) {
+                                start = time(parser.getAttributeValue(null, "start"))
+                                end = time(parser.getAttributeValue(null, "stop"))
+                                title = ""; desc = ""
+                            }
+                        }
+                        "title", "desc" -> field = if (channel != null) parser.name else null
+                    }
+                    org.xmlpull.v1.XmlPullParser.TEXT -> when (field) {
+                        "title" -> if (title.isEmpty()) title = parser.text.trim()
+                        "desc" -> if (desc.isEmpty()) desc = parser.text.trim()
+                    }
+                    org.xmlpull.v1.XmlPullParser.END_TAG -> when (parser.name) {
+                        "title", "desc" -> field = null
+                        "programme" -> {
+                            val ch = channel
+                            if (ch != null && start > 0 && end > start && end > minEnd && start < maxStart) {
+                                out.getOrPut(ch) { ArrayList() }.add(EpgEntry(title, desc, start, end, "", false))
+                            }
+                            channel = null
+                        }
+                    }
+                }
+                event = parser.next()
+            }
+        }
+        return out.mapValues { (_, l) -> l.distinctBy { it.start }.sortedBy { it.start } }
+    }
 
     fun liveUrl(id: String, format: String) = "${acc.server}/live/${acc.user}/${acc.pass}/$id.$format"
     fun vodUrl(id: String, ext: String) = "${acc.server}/movie/${acc.user}/${acc.pass}/$id.$ext"
