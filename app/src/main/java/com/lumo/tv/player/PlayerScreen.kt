@@ -91,6 +91,10 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     var item by remember { mutableStateOf(start) }
     var useHls by remember { mutableStateOf(m.store.liveFormat == "m3u8") }
     var errorMsg by remember { mutableStateOf<String?>(null) }
+    // Écran déjà utilisé : nouvel essai automatique (la connexion précédente met parfois ~1 min à se libérer)
+    var busyRetry by remember { mutableIntStateOf(0) }
+    var busyCountdown by remember { mutableIntStateOf(0) }
+    val errorFr = remember { androidx.compose.ui.focus.FocusRequester() }
     var retries by remember { mutableIntStateOf(0) }
     var controlsVisible by remember { mutableStateOf(true) }
     var banner by remember { mutableStateOf<String?>(null) }
@@ -222,6 +226,17 @@ fun PlayerScreen(m: AppModel, start: Playable) {
         }
     }
 
+    LaunchedEffect(busyRetry) {
+        if (busyRetry == 0) return@LaunchedEffect
+        while (busyCountdown > 0) { delay(1000); busyCountdown-- }
+        if (errorMsg != null) { errorMsg = null; load(item, false) }
+    }
+
+    // La télécommande va sur les boutons quand un message s'affiche
+    LaunchedEffect(errorMsg) {
+        if (errorMsg != null) { delay(150); try { errorFr.requestFocus() } catch (_: Exception) { } }
+    }
+
     // Sauvegarde régulière de la position
     LaunchedEffect(Unit) {
         while (true) { delay(10_000); if (player.isPlaying) saveProgress() }
@@ -230,7 +245,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     DisposableEffect(Unit) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_READY) retries = 0
+                if (state == Player.STATE_READY) { retries = 0; busyRetry = 0; busyCountdown = 0 }
                 if (state == Player.STATE_ENDED) {
                     saveProgress(finished = true)
                     val it = item
@@ -256,7 +271,8 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             override fun onPlayerError(error: PlaybackException) {
                 val code = (error.cause as? HttpDataSource.InvalidResponseCodeException)?.responseCode
                 if (code != null && code in listOf(401, 403, 405, 456, 458, 509, 429)) {
-                    errorMsg = "Le serveur refuse la lecture (code $code).\nTon abonnement est peut-être déjà utilisé sur un autre écran."
+                    errorMsg = "Ton abonnement est déjà utilisé sur un autre écran (code $code), ou la connexion précédente n'est pas encore libérée."
+                    if (busyRetry < 8) { busyRetry++; busyCountdown = 10 }
                     return
                 }
                 val isLive = item is Playable.Live
@@ -319,7 +335,11 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 }
             },
             update = { v ->
-                v.useController = !m.pip
+                val blocked = errorMsg != null
+                v.useController = !m.pip && !blocked
+                v.isFocusable = !blocked
+                v.isFocusableInTouchMode = !blocked
+                if (blocked) v.clearFocus() else if (!v.hasFocus()) v.post { v.requestFocus() }
                 val isLive = item is Playable.Live
                 v.setShowRewindButton(!isLive)
                 v.setShowFastForwardButton(!isLive)
@@ -418,8 +438,9 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(msg, color = Color.White, fontSize = 16.sp)
+                if (busyCountdown > 0) Text("Nouvel essai automatique dans $busyCountdown s…", color = C.Sub, fontSize = 14.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    LumoButton("Réessayer") { retries = 0; errorMsg = null; load(item, false) }
+                    LumoButton("Réessayer", requester = errorFr) { retries = 0; busyRetry = 0; busyCountdown = 0; errorMsg = null; load(item, false) }
                     LumoButton("Retour", primary = false) { m.back() }
                 }
             }
