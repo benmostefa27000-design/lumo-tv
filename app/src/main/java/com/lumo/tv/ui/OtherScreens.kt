@@ -39,7 +39,16 @@ import java.util.*
 fun SearchScreen(m: AppModel) {
     var q by remember { mutableStateOf("") }
     val fr = remember { FocusRequester() }
-    LaunchedEffect(Unit) { try { fr.requestFocus() } catch (_: Exception) { } }
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    // Sur TV, pas d'ouverture automatique du clavier (il restait bloqué sur Fire TV)
+    LaunchedEffect(Unit) { if (!m.isTv) try { fr.requestFocus() } catch (_: Exception) { } }
+    DisposableEffect(Unit) { onDispose { keyboard?.hide() } }
+    val closeKeyboard = {
+        keyboard?.hide()
+        focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down)
+        Unit
+    }
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val speechIntent = remember {
         android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
@@ -73,6 +82,10 @@ fun SearchScreen(m: AppModel) {
                 label = { Text("Film, série ou chaîne") },
                 singleLine = true,
                 colors = lumoTextFieldColors(),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onSearch = { closeKeyboard() }, onDone = { closeKeyboard() }, onNext = { closeKeyboard() }, onGo = { closeKeyboard() }
+                ),
                 modifier = Modifier.padding(horizontal = pad).fillMaxWidth().focusRequester(fr)
             )
             if (canSpeak) {
