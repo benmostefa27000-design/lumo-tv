@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -83,6 +84,23 @@ class ZapPlayerView(context: Context) : PlayerView(context) {
         }
         return super.dispatchKeyEvent(event)
     }
+
+    /** Téléphone : glisser vers le haut / le bas sur l'image pour changer de chaîne. */
+    var swipeZap = false
+    private val swipe = android.view.GestureDetector(context, object : android.view.GestureDetector.SimpleOnGestureListener() {
+        override fun onFling(e1: android.view.MotionEvent?, e2: android.view.MotionEvent, vx: Float, vy: Float): Boolean {
+            val start = e1 ?: return false
+            val dy = e2.y - start.y
+            val dx = e2.x - start.x
+            if (!swipeZap || Math.abs(dy) < height * 0.15f || Math.abs(dy) < Math.abs(dx) * 1.5f) return false
+            return onZap?.invoke(if (dy < 0) 1 else -1) ?: false
+        }
+    })
+
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        if (swipeZap) swipe.onTouchEvent(ev)
+        return super.dispatchTouchEvent(ev)
+    }
 }
 
 private data class Resolved(
@@ -122,6 +140,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     var durMs by remember { mutableLongStateOf(0L) }
     val rootFr = remember { androidx.compose.ui.focus.FocusRequester() }
     var banner by remember { mutableStateOf<String?>(null) }
+    var chanList by remember { mutableStateOf(false) }
     var epgNow by remember { mutableStateOf<List<EpgEntry>>(emptyList()) }
     var epgLoading by remember { mutableStateOf(true) }
     var clock by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -253,6 +272,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     LaunchedEffect(panel) { if (panel) { delay(150); try { panelFr.requestFocus() } catch (_: Exception) { } } }
 
     androidx.activity.compose.BackHandler(enabled = panel) { panel = false }
+    androidx.activity.compose.BackHandler(enabled = chanList) { chanList = false }
 
     // TV : masquer l'affichage après quelques secondes (sauf en pause)
     LaunchedEffect(uiTick, paused, panel, errorMsg) {
@@ -482,6 +502,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     .filter { id -> id != 0 }
                     .forEach { id -> v.findViewById<android.view.View>(id)?.visibility = hide }
                 val it = item
+                v.swipeZap = !m.isTv && it is Playable.Live && it.list.size > 1
                 v.onZap = if (it is Playable.Live && it.list.size > 1) { dir ->
                     val n = it.list.size
                     item = it.copy(index = ((it.index + dir) % n + n) % n)
@@ -508,7 +529,15 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                         "OK : pause · Menu ou OK long : synchro du son et minuteur" + if (item is Playable.Live) " · ▲▼ : chaînes" else " · ◀▶ : −10 s / +30 s",
                         color = C.Sub, fontSize = 13.sp
                     )
-                } else com.lumo.tv.ui.FocusBox(shape = RoundedCornerShape(50), scale = 1.06f, onClick = { panel = !panel }) { _ ->
+                } else if (item is Playable.Live && (item as Playable.Live).list.size > 1) {
+                    com.lumo.tv.ui.FocusBox(shape = RoundedCornerShape(50), scale = 1.06f, onClick = { chanList = !chanList }) { _ ->
+                        Text(
+                            "☰ Chaînes", color = Color.White, fontSize = 14.sp,
+                            modifier = Modifier.background(Color(0x55FFFFFF), RoundedCornerShape(50)).padding(horizontal = 14.dp, vertical = 8.dp)
+                        )
+                    }
+                }
+                if (!m.isTv) com.lumo.tv.ui.FocusBox(shape = RoundedCornerShape(50), scale = 1.06f, onClick = { panel = !panel }) { _ ->
                     Text(
                         if (avDelay == 0) "Synchro son" else "Son ${if (avDelay > 0) "+" else ""}$avDelay ms",
                         color = Color.White, fontSize = 14.sp,
@@ -533,9 +562,34 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             }
         }
 
-        if (!m.pip && item is Playable.Live && (uiVisible || banner != null)) {
+        if (!m.pip && item is Playable.Live && !m.isTv && !chanList && (uiVisible || banner != null)) {
+            // Téléphone : bandeau compact en haut, pour laisser libre le bouton pause au centre
+            val it = item as Playable.Live
             Column(
-                Modifier.align(Alignment.BottomStart).padding(start = 24.dp, end = 24.dp, bottom = if (uiVisible && !m.isTv) 72.dp else 28.dp)
+                Modifier.align(Alignment.TopStart).padding(start = 16.dp, top = 70.dp).widthIn(max = 380.dp)
+                    .background(Color(0xAA000000), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("DIRECT", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.background(C.Red, RoundedCornerShape(3.dp)).padding(horizontal = 4.dp, vertical = 1.dp))
+                    Text("${it.index + 1}/${it.list.size}  ${it.list[it.index].name}", color = C.Sub, fontSize = 11.sp, maxLines = 1)
+                }
+                if (cur != null) {
+                    Text("${hhmm.format(Date(cur.start))}–${hhmm.format(Date(cur.end))}  ${cur.title}", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    val frac = ((now - cur.start).toFloat() / (cur.end - cur.start)).coerceIn(0f, 1f)
+                    Box(Modifier.fillMaxWidth().height(2.dp).background(Color(0x55FFFFFF))) {
+                        Box(Modifier.fillMaxHeight().fillMaxWidth(frac).background(C.Red))
+                    }
+                    if (next != null) Text("Ensuite ${hhmm.format(Date(next.start))}  ${next.title}", color = C.Sub, fontSize = 11.sp, maxLines = 1)
+                } else if (epgLoading) Text("Chargement du programme…", color = C.Sub, fontSize = 11.sp)
+                if (it.list.size > 1) Text("Glisse ↑↓ sur l'image pour changer de chaîne", color = C.Dim, fontSize = 10.sp)
+            }
+        }
+
+        if (!m.pip && item is Playable.Live && m.isTv && (uiVisible || banner != null)) {
+            Column(
+                Modifier.align(Alignment.BottomStart).padding(start = 24.dp, end = 24.dp, bottom = 28.dp)
                     .widthIn(max = 640.dp).fillMaxWidth()
                     .background(Color(0xCC000000), RoundedCornerShape(10.dp)).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -565,6 +619,33 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     )
                 }
                 if (next != null) Text("Ensuite : ${hhmm.format(Date(next.start))}  ${next.title}", color = C.Sub, fontSize = 13.sp, maxLines = 1)
+            }
+        }
+
+        if (chanList && !m.pip && item is Playable.Live) {
+            val live = item as Playable.Live
+            val listState = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = (live.index - 2).coerceAtLeast(0))
+            Box(Modifier.fillMaxSize().background(Color(0x66000000)).clickable { chanList = false })
+            androidx.compose.foundation.lazy.LazyColumn(
+                Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(300.dp).background(Color(0xF0141414)),
+                state = listState,
+                contentPadding = PaddingValues(vertical = 12.dp)
+            ) {
+                items(live.list.size) { i ->
+                    val ch = live.list[i]
+                    val sel = i == live.index
+                    Row(
+                        Modifier.fillMaxWidth().clickable { item = live.copy(index = i); chanList = false }
+                            .background(if (sel) Color(0x33E11D2E) else Color.Transparent)
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text("${i + 1}", color = C.Dim, fontSize = 12.sp, modifier = Modifier.width(28.dp))
+                        if (ch.icon.isNotBlank()) coil.compose.AsyncImage(model = ch.icon, contentDescription = null, modifier = Modifier.size(width = 44.dp, height = 28.dp))
+                        Text(ch.name, color = if (sel) Color.White else C.Sub, fontSize = 14.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
+                    }
+                }
             }
         }
 
