@@ -51,9 +51,13 @@ fun LiveScreen(m: AppModel) {
     var sel by remember { mutableStateOf(if (favs.isNotEmpty()) FAV else (cats.firstOrNull()?.id ?: ALL)) }
     val visibleIds = remember(cats) { cats.map { it.id }.toSet() }
     val sortMode = m.liveSort
-    val list = remember(sel, m.live, visibleIds, favs, sortMode) {
+    // Dans « Favoris », une chaîne retirée reste affichée (étoile grise) jusqu'à ce qu'on change de catégorie :
+    // le curseur ne saute pas, et on peut en retirer plusieurs d'affilée ou se rattraper.
+    var favShown by remember(sel) { mutableStateOf(favs.toSet()) }
+    LaunchedEffect(favs) { if (sel == FAV) favShown = favShown + favs }
+    val list = remember(sel, m.live, visibleIds, favShown, sortMode) {
         val raw = when (sel) {
-            FAV -> m.live.filter { it.id in favs }
+            FAV -> m.live.filter { it.id in favShown }
             ALL -> m.live.filter { it.catId in visibleIds }
             REPLAY -> m.live.filter { it.archive && it.catId in visibleIds }
             else -> m.live.filter { it.catId == sel }
@@ -97,7 +101,7 @@ fun LiveScreen(m: AppModel) {
 
 @Composable
 private fun ChannelList(m: AppModel, list: List<LiveStream>, modifier: Modifier) {
-    if (list.isEmpty()) { Box(modifier) { Empty("Rien ici pour l'instant. Ajoute des chaînes en favori avec l'étoile.") }; return }
+    if (list.isEmpty()) { Box(modifier) { Empty("Rien ici pour l'instant. Ajoute des chaînes en favori avec l'étoile, ou en restant appuyé sur une chaîne.") }; return }
     LazyColumn(modifier.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
         itemsIndexed(list, key = { _, s -> s.id }) { i, s -> ChannelRow(m, s, list, i) }
     }
@@ -108,7 +112,11 @@ private fun ChannelRow(m: AppModel, s: LiveStream, list: List<LiveStream>, index
     LaunchedEffect(s.id) { delay(250); m.loadNow(s.id) }
     val fav = m.isFav("live", s.id)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        FocusBox(modifier = Modifier.weight(1f), scale = 1.02f, onClick = { m.go(Screen.Player(Playable.Live(list, index))) }) { f ->
+        FocusBox(
+            modifier = Modifier.weight(1f), scale = 1.02f,
+            onLongClick = { m.toggleFav("live", s.id); m.showToast(if (fav) "Retirée des favoris" else "Ajoutée aux favoris ★") },
+            onClick = { m.go(Screen.Player(Playable.Live(list, index))) }
+        ) { f ->
             Row(
                 Modifier.fillMaxWidth().background(if (f) Color(0xFF2A2A2A) else C.Card).padding(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
