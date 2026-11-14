@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -230,4 +231,28 @@ fun rememberTmdbArt(kind: String?, name: String): com.lumo.tv.data.TmdbArt.Art? 
         if (value == null && key.isNotBlank()) value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.lumo.tv.data.TmdbArt.lookup(kind, name) }
     }
     return st.value
+}
+
+
+/** Photo de profil (JPEG en base64) → image ; null si pas de photo. */
+@Composable
+fun rememberProfilePhoto(b64: String): androidx.compose.ui.graphics.ImageBitmap? = remember(b64) {
+    if (b64.isBlank()) null else try {
+        val bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+    } catch (_: Exception) { null }
+}
+
+/** Avatar rond : photo si elle existe, sinon initiale sur la couleur du profil. */
+@Composable
+fun ProfileAvatar(name: String, color: Long, photo: String, size: Dp, modifier: Modifier = Modifier) {
+    val img = rememberProfilePhoto(photo)
+    Box(
+        modifier.size(size).clip(androidx.compose.foundation.shape.CircleShape)
+            .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(color), Color(color).copy(alpha = 0.65f)))),
+        contentAlignment = Alignment.Center
+    ) {
+        if (img != null) androidx.compose.foundation.Image(img, name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        else Text(name.take(1).uppercase(), color = Color.White, fontSize = (size.value * 0.42f).sp, fontWeight = FontWeight.Bold)
+    }
 }

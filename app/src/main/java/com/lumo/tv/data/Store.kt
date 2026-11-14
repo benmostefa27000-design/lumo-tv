@@ -156,14 +156,14 @@ class Store(context: Context) {
         val items = doc.optJSONObject("profiles")?.optJSONObject("items") ?: return emptyList()
         return items.keys().asSequence().mapNotNull { id ->
             val o = items.optJSONObject(id) ?: return@mapNotNull null
-            Profile(id, o.optString("name"), o.optLong("color", 0xFF2F6FD6), o.optBoolean("kids"), o.optInt("order"))
+            Profile(id, o.optString("name"), o.optLong("color", 0xFF2F6FD6), o.optBoolean("kids"), o.optInt("order"), o.optString("photo"))
         }.sortedBy { it.order }.toList()
     }
 
     fun saveProfile(p: Profile): Change {
         val sec = obj(doc, "profiles")
         val items = obj(sec, "items")
-        items.put(p.id, JSONObject().put("name", p.name).put("color", p.color).put("kids", p.kids).put("order", p.order))
+        items.put(p.id, JSONObject().put("name", p.name).put("color", p.color).put("kids", p.kids).put("order", p.order).put("photo", p.photo))
         sec.put("ts", now())
         save()
         return Change("profiles", JSONObject(sec.toString()))

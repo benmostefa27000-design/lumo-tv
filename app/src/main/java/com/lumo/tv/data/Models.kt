@@ -144,7 +144,7 @@ data class EpgEntry(
     val hasArchive: Boolean
 )
 
-data class Profile(val id: String, val name: String, val color: Long, val kids: Boolean, val order: Int)
+data class Profile(val id: String, val name: String, val color: Long, val kids: Boolean, val order: Int, val photo: String = "")
 
 data class Progress(
     val key: String,

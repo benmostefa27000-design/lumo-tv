@@ -144,49 +144,56 @@ val profileColors = listOf(0xFF2F6FD6, 0xFFE11D2E, 0xFFF2B33D, 0xFF1F9D6A, 0xFF8
 fun ProfilesScreen(m: AppModel) {
     var manage by remember { mutableStateOf(false) }
     val profiles = run { m.store.version; m.store.profiles() }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.fillMaxWidth()) { LumoLogo(36) }
-        Spacer(Modifier.height(if (m.isTv) 60.dp else 40.dp))
-        Text(if (manage) "Gérer les profils" else "Qui regarde ?", color = Color.White, fontSize = if (m.isTv) 44.sp else 30.sp, fontWeight = FontWeight.Medium)
-        Spacer(Modifier.height(36.dp))
-        val tile = if (m.isTv) 150.dp else 110.dp
-        val fr = rememberAutoFocus(m.isTv, profiles.size)
-        FlowRowCompat(spacing = 24.dp) {
-            profiles.forEachIndexed { i, p ->
-                ProfileTile(p.name, Color(p.color), tile, edit = manage, requester = if (i == 0) fr else null) {
-                    if (manage) m.go(Screen.ProfileEdit(p)) else m.selectProfile(p)
-                }
-            }
-            if (profiles.size < 6) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    FocusBox(modifier = Modifier.size(tile), onClick = { m.go(Screen.ProfileEdit(null)) }) { _ ->
-                        Box(Modifier.fillMaxSize().border(2.dp, Color(0xFF3A3A3A), RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.Add, "Ajouter un profil", tint = C.Dim, modifier = Modifier.size(56.dp))
-                        }
+    // Style iPad / Apple TV : fond dégradé, grands avatars ronds, nom dessous
+    Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFF1B1F2A), Color(0xFF0B0C10), Color.Black)))) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(Modifier.fillMaxWidth()) { LumoLogo(36) }
+            Spacer(Modifier.height(if (m.isTv) 56.dp else 48.dp))
+            Text(if (manage) "Gérer les profils" else "Qui regarde ?", color = Color.White, fontSize = if (m.isTv) 42.sp else 30.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(if (m.isTv) 44.dp else 36.dp))
+            val tile = if (m.isTv) 150.dp else 112.dp
+            val fr = rememberAutoFocus(m.isTv, profiles.size)
+            FlowRowCompat(spacing = if (m.isTv) 40.dp else 28.dp) {
+                profiles.forEachIndexed { i, p ->
+                    ProfileTile(p, tile, edit = manage, requester = if (i == 0) fr else null) {
+                        if (manage) m.go(Screen.ProfileEdit(p)) else m.selectProfile(p)
                     }
-                    Text("Ajouter", color = C.Dim, fontSize = 16.sp)
+                }
+                if (profiles.size < 6) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        FocusBox(modifier = Modifier.size(tile), shape = androidx.compose.foundation.shape.CircleShape, scale = 1.1f, onClick = { m.go(Screen.ProfileEdit(null)) }) { f ->
+                            Box(
+                                Modifier.fillMaxSize().background(Color(if (f) 0x33FFFFFF else 0x14FFFFFF), androidx.compose.foundation.shape.CircleShape)
+                                    .border(2.dp, Color(0x33FFFFFF), androidx.compose.foundation.shape.CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) { Icon(Icons.Default.Add, "Ajouter un profil", tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(48.dp)) }
+                        }
+                        Text("Ajouter", color = C.Sub, fontSize = 16.sp)
+                    }
                 }
             }
+            Spacer(Modifier.height(48.dp))
+            LumoButton(if (manage) "Terminé" else "Gérer les profils", primary = false) { manage = !manage }
         }
-        Spacer(Modifier.height(40.dp))
-        LumoButton(if (manage) "Terminé" else "Gérer les profils", primary = false) { manage = !manage }
     }
 }
 
 @Composable
-private fun ProfileTile(name: String, color: Color, size: androidx.compose.ui.unit.Dp, edit: Boolean, requester: androidx.compose.ui.focus.FocusRequester? = null, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        FocusBox(modifier = Modifier.size(size), scale = 1.08f, requester = requester, onClick = onClick) { _ ->
-            Box(Modifier.fillMaxSize().background(color), contentAlignment = Alignment.Center) {
-                Text(name.take(1).uppercase(), color = Color.White, fontSize = 64.sp, fontWeight = FontWeight.Black)
+private fun ProfileTile(p: Profile, size: androidx.compose.ui.unit.Dp, edit: Boolean, requester: androidx.compose.ui.focus.FocusRequester? = null, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        FocusBox(modifier = Modifier.size(size), shape = androidx.compose.foundation.shape.CircleShape, scale = 1.12f, requester = requester, onClick = onClick) { f ->
+            focused = f
+            Box(Modifier.fillMaxSize().then(if (f) Modifier.border(4.dp, Color.White, androidx.compose.foundation.shape.CircleShape) else Modifier).padding(if (f) 6.dp else 0.dp)) {
+                ProfileAvatar(p.name, p.color, p.photo, size)
                 if (edit) {
-                    Box(Modifier.fillMaxSize().background(Color(0x88000000)), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Edit, "Modifier", tint = Color.White, modifier = Modifier.size(40.dp))
+                    Box(Modifier.fillMaxSize().background(Color(0x88000000), androidx.compose.foundation.shape.CircleShape), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Edit, "Modifier", tint = Color.White, modifier = Modifier.size(36.dp))
                     }
                 }
             }
         }
-        Text(name, color = C.Sub, fontSize = 16.sp)
+        Text(p.name, color = if (focused) Color.White else C.Sub, fontSize = 17.sp, fontWeight = if (focused) FontWeight.SemiBold else FontWeight.Normal)
     }
 }
 
@@ -224,8 +231,21 @@ fun ProfileEditScreen(m: AppModel, existing: Profile?) {
     var color by remember { mutableStateOf(existing?.color ?: profileColors[(m.store.profiles().size) % profileColors.size]) }
     var kids by remember { mutableStateOf(existing?.kids ?: false) }
     var pin by remember { mutableStateOf(m.store.pin()) }
+    var photo by remember { mutableStateOf(existing?.photo ?: "") }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val picker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) photoToBase64(ctx, uri)?.let { photo = it } ?: m.showToast("Impossible de lire cette photo")
+    }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Text(if (existing == null) "Nouveau profil" else "Modifier le profil", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+            ProfileAvatar(name.ifBlank { "?" }, color, photo, 96.dp)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!m.isTv) LumoButton(if (photo.isBlank()) "Choisir une photo" else "Changer la photo", primary = false) { picker.launch("image/*") }
+                else Text("La photo se choisit depuis le téléphone", color = C.Dim, fontSize = 13.sp)
+                if (photo.isNotBlank()) LumoButton("Retirer la photo", primary = false) { photo = "" }
+            }
+        }
         OutlinedTextField(name, { name = it.take(20) }, label = { Text("Prénom") }, singleLine = true, colors = lumoTextFieldColors(), modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth())
         Text("Couleur", color = C.Sub)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -257,7 +277,7 @@ fun ProfileEditScreen(m: AppModel, existing: Profile?) {
                 if (kids && pin.length < 4) { m.showToast("Choisis un code d'au moins 4 chiffres"); return@LumoButton }
                 val n = name.trim().ifBlank { "Profil" }
                 val order = existing?.order ?: (m.store.profiles().maxOfOrNull { it.order } ?: 0) + 1
-                m.commit(m.store.saveProfile(Profile(existing?.id ?: "p_${System.currentTimeMillis()}", n, color, kids, order)))
+                m.commit(m.store.saveProfile(Profile(existing?.id ?: "p_${System.currentTimeMillis()}", n, color, kids, order, photo)))
                 if (kids && pin != m.store.pin()) m.commit(m.store.setPin(pin))
                 m.back()
             }
@@ -271,3 +291,20 @@ fun ProfileEditScreen(m: AppModel, existing: Profile?) {
         }
     }
 }
+
+
+/** Photo choisie → carré centré 256 px, JPEG, en base64 (léger, synchronisé avec la TV). */
+private fun photoToBase64(ctx: android.content.Context, uri: android.net.Uri): String? = try {
+    val src = ctx.contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it) } ?: throw Exception()
+    // Orientation EXIF (photos prises au téléphone)
+    val rot = if (android.os.Build.VERSION.SDK_INT < 24) 1 else try {
+        ctx.contentResolver.openInputStream(uri)?.use { android.media.ExifInterface(it).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1) } ?: 1
+    } catch (_: Exception) { 1 }
+    val deg = when (rot) { 6 -> 90f; 3 -> 180f; 8 -> 270f; else -> 0f }
+    val side = minOf(src.width, src.height)
+    val mtx = android.graphics.Matrix().apply { val s = 256f / side; postScale(s, s); if (deg != 0f) postRotate(deg) }
+    val sq = Bitmap.createBitmap(src, (src.width - side) / 2, (src.height - side) / 2, side, side, mtx, true)
+    val out = java.io.ByteArrayOutputStream()
+    sq.compress(Bitmap.CompressFormat.JPEG, 82, out)
+    android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+} catch (_: Exception) { null }

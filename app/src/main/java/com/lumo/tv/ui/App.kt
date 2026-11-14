@@ -196,9 +196,7 @@ fun IconFocus(icon: ImageVector, label: String, tint: Color = Color.White, onCli
 @Composable
 private fun ProfileBadge(m: AppModel, onClick: () -> Unit) {
     val p = m.profile ?: return
-    FocusBox(shape = RoundedCornerShape(4.dp), scale = 1.1f, onClick = onClick) { _ ->
-        Box(Modifier.size(32.dp).background(Color(p.color)), contentAlignment = Alignment.Center) {
-            Text(p.name.take(1).uppercase(), color = Color.White, fontWeight = FontWeight.Black)
-        }
+    FocusBox(shape = androidx.compose.foundation.shape.CircleShape, scale = 1.1f, onClick = onClick) { _ ->
+        ProfileAvatar(p.name, p.color, p.photo, 34.dp)
     }
 }
