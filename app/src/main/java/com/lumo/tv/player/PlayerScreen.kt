@@ -97,8 +97,57 @@ class ZapPlayerView(context: Context) : PlayerView(context) {
         }
     })
 
+    /** Téléphone : glisser le doigt verticalement sur la moitié gauche = luminosité. */
+    var brightGesture = false
+    var onBrightness: ((Float) -> Unit)? = null
+    private var bStartY = 0f
+    private var bStartLevel = 0.5f
+    private var bTracking = false
+    private var bActive = false
+    private val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop * 2
+
+    private fun window(): android.view.Window? {
+        var c = context
+        while (c is android.content.ContextWrapper) { if (c is android.app.Activity) return c.window; c = c.baseContext }
+        return null
+    }
+
+    private fun currentBrightness(): Float {
+        val w = window()?.attributes?.screenBrightness ?: -1f
+        if (w >= 0f) return w
+        return try { android.provider.Settings.System.getInt(context.contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS) / 255f } catch (_: Exception) { 0.5f }
+    }
+
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
         if (swipeZap) swipe.onTouchEvent(ev)
+        if (brightGesture) {
+            when (ev.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    // Pas sur le haut de l'écran (barre de notifications) ni sur la moitié droite
+                    bTracking = ev.x < width / 2f && ev.y > height * 0.15f && ev.y < height * 0.9f
+                    bActive = false; bStartY = ev.y
+                }
+                android.view.MotionEvent.ACTION_MOVE -> if (bTracking) {
+                    val dy = bStartY - ev.y
+                    if (!bActive && Math.abs(dy) > slop) {
+                        bActive = true; bStartY = ev.y; bStartLevel = currentBrightness()
+                        val cancel = android.view.MotionEvent.obtain(ev).apply { action = android.view.MotionEvent.ACTION_CANCEL }
+                        super.dispatchTouchEvent(cancel); cancel.recycle()
+                    }
+                    if (bActive) {
+                        val level = (bStartLevel + (bStartY - ev.y) / (height * 0.8f)).coerceIn(0.02f, 1f)
+                        window()?.let { w -> val a = w.attributes; a.screenBrightness = level; w.attributes = a }
+                        onBrightness?.invoke(level)
+                        return true
+                    }
+                }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    val was = bActive
+                    bTracking = false; bActive = false
+                    if (was) { onBrightness?.invoke(-1f); return true }
+                }
+            }
+        }
         return super.dispatchTouchEvent(ev)
     }
 }
@@ -141,6 +190,8 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     val rootFr = remember { androidx.compose.ui.focus.FocusRequester() }
     var banner by remember { mutableStateOf<String?>(null) }
     var chanList by remember { mutableStateOf(false) }
+    var brightShown by remember { mutableFloatStateOf(-1f) }
+    var brightHideAt by remember { mutableLongStateOf(0L) }
     var videoMode by remember { mutableIntStateOf(m.store.videoMode) }
     val modeNames = listOf("Adapté", "Plein écran", "Étiré", "Zoom 120 %", "Zoom 135 %")
     fun nextVideoMode() {
@@ -538,6 +589,8 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     .forEach { id -> v.findViewById<android.view.View>(id)?.visibility = hide }
                 val it = item
                 v.swipeZap = false
+                v.brightGesture = !m.isTv
+                v.onBrightness = { lvl -> if (lvl >= 0f) { brightShown = lvl; brightHideAt = Long.MAX_VALUE } else brightHideAt = System.currentTimeMillis() + 800 }
                 v.onZap = if (it is Playable.Live && it.list.size > 1) { dir ->
                     val n = it.list.size
                     item = it.copy(index = ((it.index + dir) % n + n) % n)
@@ -674,6 +727,24 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 ) {
                     Text(if (dir < 0) "‹" else "›", color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
                 }
+            }
+        }
+
+        LaunchedEffect(brightHideAt) {
+            if (brightHideAt != Long.MAX_VALUE && brightHideAt > 0) { delay((brightHideAt - System.currentTimeMillis()).coerceAtLeast(0)); brightShown = -1f }
+        }
+        if (brightShown >= 0f && !m.pip) {
+            Column(
+                Modifier.align(Alignment.CenterStart).padding(start = 40.dp)
+                    .background(Color(0xAA000000), RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("☀", color = Color.White, fontSize = 20.sp)
+                Box(Modifier.width(6.dp).height(120.dp).background(Color(0x55FFFFFF), RoundedCornerShape(3.dp)), contentAlignment = Alignment.BottomCenter) {
+                    Box(Modifier.fillMaxWidth().fillMaxHeight(brightShown).background(Color.White, RoundedCornerShape(3.dp)))
+                }
+                Text("${(brightShown * 100).toInt()} %", color = Color.White, fontSize = 12.sp)
             }
         }
 
