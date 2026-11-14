@@ -339,6 +339,21 @@ class AppModel(private val context: Context) {
     }
     fun removeProgress(key: String) { commit(store.removeProgress(pid, key)) }
 
+    /** « Reprendre la lecture » : élément dont on demande la suppression (appui long). */
+    var removeAsk by mutableStateOf<Progress?>(null)
+    fun askRemoveProgress(p: Progress) { removeAsk = p }
+
+    /** Retire un film (toutes ses versions) ou une série (épisodes en cours) de « Reprendre la lecture ». */
+    fun removeFromContinue(p: Progress) {
+        val t = normTitle(p.title)
+        store.progress(pid).filter { o ->
+            !o.finished && if (p.kind == "ep") o.kind == "ep" && o.parentId == p.parentId
+            else o.kind == "vod" && normTitle(o.title) == t
+        }.forEach { commit(store.removeProgress(pid, it.key)) }
+        if (p.kind != "ep") commit(store.removeProgress(pid, p.key))
+        showToast("Retiré de « Reprendre la lecture »")
+    }
+
     suspend fun syncNow() {
         val acc = store.account ?: return
         if (!sync.enabled) return

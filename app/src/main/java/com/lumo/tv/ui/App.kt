@@ -55,6 +55,17 @@ fun LumoApp(m: AppModel) {
                 }
             }
 
+            m.removeAsk?.let { p ->
+                AlertDialog(
+                    onDismissRequest = { m.removeAsk = null },
+                    containerColor = C.Card,
+                    title = { Text("Reprendre la lecture", color = Color.White) },
+                    text = { Text("Retirer « ${p.title} » de la liste ?", color = C.Sub) },
+                    confirmButton = { TextButton(onClick = { m.removeFromContinue(p); m.removeAsk = null }) { Text("Retirer", color = C.Red) } },
+                    dismissButton = { TextButton(onClick = { m.removeAsk = null }) { Text("Annuler", color = C.Sub) } }
+                )
+            }
+
             val up = m.update
             if (up != null && m.current !is Screen.Player) {
                 AlertDialog(

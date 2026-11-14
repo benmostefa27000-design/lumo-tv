@@ -210,12 +210,12 @@ class Store(context: Context) {
 
     fun progress(pid: String): List<Progress> {
         val pr = doc.optJSONObject("p")?.optJSONObject(pid)?.optJSONObject("prog") ?: return emptyList()
-        return pr.keys().asSequence().mapNotNull { k -> pr.optJSONObject(k)?.let { Progress.fromJson(k, it) } }
+        return pr.keys().asSequence().mapNotNull { k -> pr.optJSONObject(k)?.takeIf { !it.optBoolean("del") }?.let { Progress.fromJson(k, it) } }
             .sortedByDescending { it.ts }.toList()
     }
 
     fun progressFor(pid: String, key: String): Progress? =
-        doc.optJSONObject("p")?.optJSONObject(pid)?.optJSONObject("prog")?.optJSONObject(key)?.let { Progress.fromJson(key, it) }
+        doc.optJSONObject("p")?.optJSONObject(pid)?.optJSONObject("prog")?.optJSONObject(key)?.takeIf { !it.optBoolean("del") }?.let { Progress.fromJson(key, it) }
 
     fun saveProgress(pid: String, p: Progress): Change {
         val pr = obj(profileDoc(pid), "prog")
@@ -230,10 +230,13 @@ class Store(context: Context) {
         return Change("p/$pid/prog/${p.key}", JSONObject(o.toString()))
     }
 
+    /** Suppression = « pierre tombale » datée, pour que les autres appareils ne la remettent pas à la synchro. */
     fun removeProgress(pid: String, key: String): Change {
-        doc.optJSONObject("p")?.optJSONObject(pid)?.optJSONObject("prog")?.remove(key)
+        val pr = obj(profileDoc(pid), "prog")
+        val t = JSONObject().put("del", true).put("ts", now())
+        pr.put(key, t)
         save()
-        return Change("p/$pid/prog/$key", null)
+        return Change("p/$pid/prog/$key", JSONObject(t.toString()))
     }
 
     // ---------- Fusion avec la base de synchro ----------

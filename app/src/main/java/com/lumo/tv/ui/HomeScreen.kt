@@ -147,7 +147,8 @@ fun openItem(m: AppModel, obj: Any) {
 
 @Composable
 private fun ProgressCard(m: AppModel, p: Progress, w: androidx.compose.ui.unit.Dp, vods: Map<String, Vod>, series: Map<String, Series>) {
-    PosterCard(p.title, p.img, w, progress = p.fraction, badge = p.subtitle.ifBlank { null }, kind = if (p.kind == "vod") "movie" else "tv") {
+    PosterCard(p.title, p.img, w, progress = p.fraction, badge = p.subtitle.ifBlank { null }, kind = if (p.kind == "vod") "movie" else "tv",
+        onLongClick = { m.askRemoveProgress(p) }) {
         if (p.kind == "vod") {
             val v = vods[p.itemId] ?: Vod(p.itemId, p.title, p.img, "", "", p.ext, 0)
             m.go(Screen.MovieDetail(v))
