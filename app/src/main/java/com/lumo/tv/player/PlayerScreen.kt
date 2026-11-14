@@ -205,6 +205,8 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     val rootFr = remember { androidx.compose.ui.focus.FocusRequester() }
     var banner by remember { mutableStateOf<String?>(null) }
     var chanList by remember { mutableStateOf(false) }
+    var subsPanel by remember { mutableStateOf(false) }
+    var tracksTick by remember { mutableIntStateOf(0) }
     var brightShown by remember { mutableFloatStateOf(-1f) }
     var brightHideAt by remember { mutableLongStateOf(0L) }
     var volShown by remember { mutableFloatStateOf(-1f) }
@@ -348,6 +350,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
 
     androidx.activity.compose.BackHandler(enabled = panel) { panel = false }
     androidx.activity.compose.BackHandler(enabled = chanList) { chanList = false }
+    androidx.activity.compose.BackHandler(enabled = subsPanel) { subsPanel = false }
 
     // TV : masquer l'affichage après quelques secondes (sauf en pause)
     LaunchedEffect(uiTick, paused, panel, errorMsg) {
@@ -430,6 +433,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
 
     DisposableEffect(Unit) {
         val listener = object : Player.Listener {
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) { tracksTick++ }
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 paused = !playWhenReady
             }
@@ -562,7 +566,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     this.player = player
                     setShowNextButton(false)
                     setShowPreviousButton(false)
-                    setShowSubtitleButton(true)
+                    setShowSubtitleButton(false)
                     controllerShowTimeoutMs = 4000
                     keepScreenOn = true
                     isFocusable = true
@@ -642,6 +646,12 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                             modifier = Modifier.background(Color(0x55FFFFFF), RoundedCornerShape(50)).padding(horizontal = 14.dp, vertical = 8.dp)
                         )
                     }
+                }
+                if (!m.isTv && item !is Playable.Live) com.lumo.tv.ui.FocusBox(shape = RoundedCornerShape(50), scale = 1.06f, onClick = { subsPanel = !subsPanel }) { _ ->
+                    Text(
+                        "Sous-titres", color = Color.White, fontSize = 14.sp,
+                        modifier = Modifier.background(Color(0x55FFFFFF), RoundedCornerShape(50)).padding(horizontal = 14.dp, vertical = 8.dp)
+                    )
                 }
                 if (!m.isTv) com.lumo.tv.ui.FocusBox(shape = RoundedCornerShape(50), scale = 1.06f, onClick = { nextVideoMode() }) { _ ->
                     Text(
@@ -781,6 +791,47 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     Box(Modifier.fillMaxWidth().fillMaxHeight(volShown).background(Color.White, RoundedCornerShape(3.dp)))
                 }
                 Text("${(volShown * 100).toInt()} %", color = Color.White, fontSize = 12.sp)
+            }
+        }
+
+        if (subsPanel && !m.pip) {
+            tracksTick
+            val textGroups = player.currentTracks.groups.filter { it.type == MC.TRACK_TYPE_TEXT }
+            val off = MC.TRACK_TYPE_TEXT in player.trackSelectionParameters.disabledTrackTypes || textGroups.none { it.isSelected }
+            fun choose(g: androidx.media3.common.Tracks.Group?, i: Int) {
+                val b = player.trackSelectionParameters.buildUpon().clearOverridesOfType(MC.TRACK_TYPE_TEXT)
+                if (g == null) b.setTrackTypeDisabled(MC.TRACK_TYPE_TEXT, true)
+                else b.setTrackTypeDisabled(MC.TRACK_TYPE_TEXT, false).setOverrideForType(androidx.media3.common.TrackSelectionOverride(g.mediaTrackGroup, i))
+                player.trackSelectionParameters = b.build()
+                subsPanel = false
+            }
+            Box(Modifier.fillMaxSize().background(Color(0x66000000)).clickable { subsPanel = false })
+            androidx.compose.foundation.lazy.LazyColumn(
+                Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(300.dp).background(Color(0xF0141414)),
+                contentPadding = PaddingValues(vertical = 16.dp)
+            ) {
+                item { Text("Sous-titres", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)) }
+                item {
+                    Text(
+                        (if (off) "✓  " else "    ") + "Aucun", color = Color.White, fontSize = 16.sp, fontWeight = if (off) FontWeight.Bold else FontWeight.Normal,
+                        modifier = Modifier.fillMaxWidth().clickable { choose(null, 0) }.padding(horizontal = 18.dp, vertical = 14.dp)
+                    )
+                }
+                textGroups.forEach { g ->
+                    for (i in 0 until g.length) {
+                        val f = g.getTrackFormat(i)
+                        val name = f.label ?: f.language?.let { java.util.Locale(it).getDisplayLanguage(java.util.Locale.FRENCH).replaceFirstChar { c -> c.uppercase() } } ?: "Piste ${i + 1}"
+                        val selected = !off && g.isTrackSelected(i)
+                        item {
+                            Text(
+                                (if (selected) "✓  " else "    ") + name, color = if (selected) Color.White else C.Sub, fontSize = 16.sp,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                modifier = Modifier.fillMaxWidth().clickable { choose(g, i) }.padding(horizontal = 18.dp, vertical = 14.dp)
+                            )
+                        }
+                    }
+                }
+                if (textGroups.isEmpty()) item { Text("Pas de sous-titres pour ce film. S'ils restent affichés, ils sont incrustés dans l'image et ne peuvent pas être enlevés.", color = C.Sub, fontSize = 14.sp, modifier = Modifier.padding(18.dp)) }
             }
         }
 
