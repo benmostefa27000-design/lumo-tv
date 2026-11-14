@@ -233,8 +233,13 @@ fun SeriesDetailScreen(m: AppModel, s: Series) {
                     }) { f ->
                         Row(Modifier.fillMaxWidth().background(if (f) Color(0xFF2A2A2A) else Color.Transparent).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.width(if (m.isTv) 180.dp else 124.dp).aspectRatio(16f / 9f).background(C.Card2)) {
-                                val im = e.img.ifBlank { s.cover }
-                                if (im.isNotBlank()) AsyncImage(model = im, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                // Image de l'épisode, sinon grande image de la série, sinon affiche (si un lien est cassé on passe au suivant)
+                                val cands = remember(e.id, e.img, i?.backdrop) { listOf(e.img, i?.backdrop ?: "", s.cover).filter { it.isNotBlank() }.distinct() }
+                                var ci by remember(cands) { mutableIntStateOf(0) }
+                                cands.getOrNull(ci)?.let { im ->
+                                    AsyncImage(model = im, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                                        onError = { ci++ })
+                                }
                                 if (p != null) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp).background(Color(0x55FFFFFF))) {
                                     Box(Modifier.fillMaxHeight().fillMaxWidth(if (p.finished) 1f else p.fraction).background(C.Red))
                                 }
