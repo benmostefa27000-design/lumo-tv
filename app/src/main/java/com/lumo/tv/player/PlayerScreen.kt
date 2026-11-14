@@ -524,6 +524,14 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 v.setShowRewindButton(!isLive)
                 v.setShowFastForwardButton(!isLive)
                 val hide = if (isLive) android.view.View.GONE else android.view.View.VISIBLE
+                // Pas de voile sombre sur toute l'image quand on touche l'écran, barre du bas transparente
+                fun exo(n: String) = v.resources.getIdentifier(n, "id", v.context.packageName).takeIf { id -> id != 0 }?.let { id -> v.findViewById<android.view.View>(id) }
+                exo("exo_controls_background")?.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                exo("exo_bottom_bar")?.let { b ->
+                    b.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                    b.visibility = if (isLive) android.view.View.GONE else android.view.View.VISIBLE
+                    b.alpha = if (isLive) 0f else 1f
+                }
                 listOf("exo_progress", "exo_position", "exo_duration", "exo_time")
                     .map { n -> v.resources.getIdentifier(n, "id", v.context.packageName) }
                     .filter { id -> id != 0 }
