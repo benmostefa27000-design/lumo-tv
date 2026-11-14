@@ -250,6 +250,8 @@ class AppModel(private val context: Context) {
 
     val liveSort: String get() { store.version; return store.liveSort() }
     fun setLiveSort(mode: String) { commit(store.setLiveSort(mode)) }
+    val tmdbKey: String get() { store.version; return store.tmdbKey() }
+    fun setTmdbKey(k: String) { commit(store.setTmdbKey(k)) }
 
     fun sortLive(list: List<LiveStream>, mode: String): List<LiveStream> = when (mode) {
         "az" -> list.sortedBy { norm(it.name.substringAfter('|').trim()) }

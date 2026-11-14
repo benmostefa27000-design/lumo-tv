@@ -165,7 +165,7 @@ fun SeriesDetailScreen(m: AppModel, s: Series) {
     LaunchedEffect(s.id) {
         info = withContext(Dispatchers.IO) { try { m.client?.seriesInfo(s.id) } catch (_: Exception) { error = true; null } }
         // Titres et images manquants complétés depuis TVmaze (en arrière-plan)
-        info?.let { base -> info = withContext(Dispatchers.IO) { try { com.lumo.tv.data.Tvmaze.enrich(m.http, s.name, s.cover, base) } catch (_: Exception) { base } } }
+        info?.let { base -> info = withContext(Dispatchers.IO) { try { com.lumo.tv.data.Tvmaze.enrich(m.http, s.name, s.cover, base, m.tmdbKey) } catch (_: Exception) { base } } }
     }
     val progress = m.progressList().filter { it.kind == "ep" && it.parentId == s.id }
     val last = progress.maxByOrNull { it.ts }

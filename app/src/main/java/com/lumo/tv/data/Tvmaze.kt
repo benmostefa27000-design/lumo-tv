@@ -63,7 +63,14 @@ object Tvmaze {
     }
 
     /** Épisodes complétés + une vignette de repli différente pour chaque épisode. */
-    fun enrich(http: OkHttpClient, seriesName: String, cover: String, info: SeriesInfo): SeriesInfo {
+    fun enrich(http: OkHttpClient, seriesName: String, cover: String, info: SeriesInfo, tmdbKey: String = ""): SeriesInfo {
+        // TMDB d'abord (vraies images d'épisodes, en français), si l'utilisateur a mis sa clé
+        val tmdb: Map<Pair<Int, Int>, Tmdb.Ep> = if (tmdbKey.isBlank()) emptyMap() else try {
+            val id = Tmdb.showId(http, tmdbKey, seriesName, info.year, info.tmdbId)
+            if (id == null) emptyMap() else buildMap {
+                for (sn in info.episodes.keys) Tmdb.season(http, tmdbKey, id, sn).forEach { (num, ep) -> put(sn to num, ep) }
+            }
+        } catch (_: Exception) { emptyMap() }
         val tm = load(http, seriesName, info.year)
         val pool = (tm?.images.orEmpty() + info.images + listOf(info.backdrop, cover))
             .filter { it.startsWith("http") }.distinct()
@@ -71,11 +78,15 @@ object Tvmaze {
         val eps = info.episodes.toSortedMap().mapValues { (_, list) ->
             list.map { ep ->
                 val t = tm?.eps?.get(ep.season to ep.num)
-                val title = if (t != null && t.name.isNotBlank() && (ep.title.isBlank() || generic.containsMatchIn(ep.title.trim())))
-                    (if (ep.title.isBlank()) t.name else "${ep.title.trim()} - ${t.name}") else ep.title
-                val alt = t?.img?.ifBlank { null } ?: pool.getOrNull(n % pool.size.coerceAtLeast(1)) ?: ""
+                val d = tmdb[ep.season to ep.num]
+                // TMDB met parfois « Épisode 3 » quand il n'a pas le vrai titre : on l'ignore alors
+                val dName = d?.name?.takeIf { it.isNotBlank() && !generic.containsMatchIn(it.trim()) }
+                val newName = dName ?: t?.name?.takeIf { it.isNotBlank() }
+                val title = if (newName != null && (ep.title.isBlank() || generic.containsMatchIn(ep.title.trim())))
+                    (if (ep.title.isBlank()) newName else "${ep.title.trim()} - $newName") else ep.title
+                val alt = d?.still?.ifBlank { null } ?: t?.img?.ifBlank { null } ?: pool.getOrNull(n % pool.size.coerceAtLeast(1)) ?: ""
                 n++
-                ep.copy(title = title, plot = ep.plot.ifBlank { t?.summary ?: "" }, alt = alt)
+                ep.copy(title = title, plot = ep.plot.ifBlank { d?.overview?.ifBlank { null } ?: t?.summary ?: "" }, alt = alt)
             }
         }
         return info.copy(episodes = eps, images = (info.images + tm?.images.orEmpty()).distinct())

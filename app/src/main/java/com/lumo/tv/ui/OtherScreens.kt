@@ -143,6 +143,28 @@ fun SettingsScreen(m: AppModel) {
             }
         }
         item {
+            var edit by remember { mutableStateOf(false) }
+            var txt by remember { mutableStateOf(m.tmdbKey) }
+            val hasKey = m.tmdbKey.isNotBlank()
+            SettingRow("Images et infos TMDB", if (hasKey) "Activé · images d'épisodes et infos en français" else if (m.isTv) "À régler depuis le téléphone" else "Coller ta clé TMDB pour les images d'épisodes") {
+                if (!m.isTv) edit = !edit
+            }
+            if (edit && !m.isTv) Column(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = txt, onValueChange = { txt = it.trim() }, singleLine = true,
+                    label = { Text("Clé d'API (32 caractères)") }, colors = lumoTextFieldColors(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    LumoButton("Enregistrer") {
+                        if (txt.isNotBlank() && !Regex("^[0-9a-fA-F]{32}$").matches(txt)) m.showToast("La clé doit faire 32 lettres et chiffres (la « Clé d'API », pas le long jeton)")
+                        else { m.setTmdbKey(txt); m.showToast(if (txt.isBlank()) "TMDB désactivé" else "Clé TMDB enregistrée"); edit = false }
+                    }
+                    LumoButton("Annuler", primary = false) { txt = m.tmdbKey; edit = false }
+                }
+            }
+        }
+        item {
             SettingRow("Animations 3D", if (m.store.anim3d) "Activées (défilement des affiches, reflets)" else "Désactivées : plus léger pour un vieux Fire Stick") {
                 m.store.anim3d = !m.store.anim3d
             }

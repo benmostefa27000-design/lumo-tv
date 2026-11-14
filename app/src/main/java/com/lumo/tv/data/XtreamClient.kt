@@ -250,6 +250,7 @@ class XtreamClient(val acc: Account, private val http: OkHttpClient, private val
         }.filter { it.startsWith("http") }.distinct()
         return SeriesInfo(
             images = allImgs,
+            tmdbId = info.s("tmdb").ifBlank { info.s("tmdb_id") },
             plot = info.s("plot"),
             backdrop = backdrop,
             cast = info.s("cast"),

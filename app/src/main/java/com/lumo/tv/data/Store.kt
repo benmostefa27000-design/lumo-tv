@@ -127,6 +127,17 @@ class Store(context: Context) {
         return Change("settings", JSONObject(sec.toString()))
     }
 
+    /** Clé TMDB (images d'épisodes, infos en français), partagée entre les appareils. */
+    fun tmdbKey(): String = doc.optJSONObject("settings")?.optString("tmdbKey")?.trim() ?: ""
+
+    fun setTmdbKey(k: String): Change {
+        val sec = obj(doc, "settings")
+        sec.put("tmdbKey", k.trim())
+        sec.put("ts", now())
+        save()
+        return Change("settings", JSONObject(sec.toString()))
+    }
+
     /** Nombre de lancements par chaîne (sur cet appareil, par profil) pour « Les plus regardées ». */
     fun watchCounts(pid: String): Map<String, Int> = try {
         val o = JSONObject(prefs.getString("watch_$pid", "{}") ?: "{}")

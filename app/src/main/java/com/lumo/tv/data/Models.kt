@@ -131,7 +131,8 @@ data class SeriesInfo(
     val seasons: List<Int>,
     val episodes: Map<Int, List<Episode>>,
     /** Toutes les grandes images de la série (fournisseur + TVmaze), pour varier les vignettes d'épisodes. */
-    val images: List<String> = emptyList()
+    val images: List<String> = emptyList(),
+    val tmdbId: String = ""
 )
 
 data class EpgEntry(
