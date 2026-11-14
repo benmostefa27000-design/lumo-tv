@@ -294,8 +294,18 @@ fun PlayerScreen(m: AppModel, start: Playable) {
         if (m.isTv && !panel && errorMsg == null) { delay(120); try { rootFr.requestFocus() } catch (_: Exception) { } }
     }
 
+    var loadedOnce by remember { mutableStateOf(false) }
     LaunchedEffect(item, useHls) {
         val fromStart = when (val it = item) { is Playable.Movie -> it.fromStart; is Playable.Ep -> it.fromStart; else -> false }
+        if (loadedOnce) {
+            // Changement de chaîne : on ferme d'abord l'ancien flux, sinon le fournisseur voit 2 écrans (code 458).
+            // Le délai regroupe aussi les appuis rapides : seule la dernière chaîne choisie est ouverte.
+            player.stop()
+            m.closeMediaConnections()
+            errorMsg = null; busyRetry = 0; busyCountdown = 0; busySince = 0L
+            delay(900)
+        }
+        loadedOnce = true
         load(item, fromStart)
         if (item is Playable.Live) {
             banner = resolve(item).title
@@ -519,7 +529,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     .filter { id -> id != 0 }
                     .forEach { id -> v.findViewById<android.view.View>(id)?.visibility = hide }
                 val it = item
-                v.swipeZap = !m.isTv && it is Playable.Live && it.list.size > 1
+                v.swipeZap = false
                 v.onZap = if (it is Playable.Live && it.list.size > 1) { dir ->
                     val n = it.list.size
                     item = it.copy(index = ((it.index + dir) % n + n) % n)
