@@ -72,10 +72,13 @@ fun HomeScreen(m: AppModel) {
         .take(30)
     val favVod = run { m.store.version; m.store.favs(m.pid, "vod") }
     val favSer = run { m.store.version; m.store.favs(m.pid, "series") }
-    val hero = recentVods.firstOrNull { it.icon.isNotBlank() } ?: recentVods.firstOrNull()
+    // Si l'affiche d'un film ne se charge pas, on passe au film suivant
+    var heroSkip by remember(recentVods) { mutableIntStateOf(0) }
+    val heroList = remember(recentVods) { recentVods.filter { it.icon.isNotBlank() }.ifEmpty { recentVods } }
+    val hero = heroList.getOrNull(heroSkip) ?: heroList.firstOrNull()
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
-        if (hero != null) item { Hero(m, hero) }
+        if (hero != null) item { Hero(m, hero) { if (heroSkip < 8 && heroSkip + 1 < heroList.size) heroSkip++ } }
         if (progress.isNotEmpty()) item {
             RowSection("Reprendre la lecture") {
                 items(progress, key = { it.key }) { p -> ProgressCard(m, p, cardW, vodsById, seriesById) }
@@ -171,10 +174,12 @@ fun RowSection(title: String, content: androidx.compose.foundation.lazy.LazyList
 val LocalPad = staticCompositionLocalOf { 16.dp }
 
 @Composable
-private fun Hero(m: AppModel, v: Vod) {
+private fun Hero(m: AppModel, v: Vod, onNoImage: () -> Unit = {}) {
     var info by remember(v.id) { mutableStateOf<VodInfo?>(null) }
+    var infoDone by remember(v.id) { mutableStateOf(false) }
     LaunchedEffect(v.id) {
         info = withContext(Dispatchers.IO) { try { m.client?.vodInfo(v.id) } catch (_: Exception) { null } }
+        infoDone = true
     }
     val h = if (m.isTv) 400.dp else 420.dp
     val anim = m.store.anim3d
@@ -189,8 +194,16 @@ private fun Hero(m: AppModel, v: Vod) {
         ).value
     } else 1f
     Box(Modifier.fillMaxWidth().height(h).clipToBounds()) {
-        val img = info?.backdrop?.ifBlank { null } ?: v.icon
-        if (img.isNotBlank()) AsyncImage(model = img, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().graphicsLayer { scaleX = kb; scaleY = kb })
+        // Images à essayer dans l'ordre : grande image, affiche ; si aucune ne marche → film suivant
+        val imgs = listOfNotNull(info?.backdrop?.ifBlank { null }, v.icon.ifBlank { null }).distinct()
+        var ci by remember(v.id, imgs.size) { mutableIntStateOf(0) }
+        val img = imgs.getOrNull(ci)
+        LaunchedEffect(v.id, imgs.size) { if (imgs.isEmpty()) onNoImage() }
+        if (img != null) AsyncImage(
+            model = img, contentDescription = null, contentScale = ContentScale.Crop,
+            onError = { if (ci + 1 < imgs.size) ci++ else if (infoDone) onNoImage() },
+            modifier = Modifier.fillMaxSize().graphicsLayer { scaleX = kb; scaleY = kb }
+        )
         Box(Modifier.fillMaxSize().background(leftFade()))
         Box(Modifier.fillMaxSize().background(bottomFade()))
         Column(
