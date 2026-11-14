@@ -135,8 +135,12 @@ fun PosterCard(
     progress: Float? = null,
     badge: String? = null,
     onLongClick: (() -> Unit)? = null,
+    kind: String? = null,
     onClick: () -> Unit
 ) {
+    // Affiche TMDB (meilleure qualité) si la clé est réglée, sinon celle du fournisseur
+    val art = rememberTmdbArt(kind, title)
+    val image = art?.poster?.ifBlank { null } ?: image
     FocusBox(modifier = Modifier.width(width).aspectRatio(2f / 3f), onLongClick = onLongClick, onClick = onClick) { _ ->
         Box(Modifier.fillMaxSize().background(C.Card2)) {
             Text(
@@ -214,4 +218,16 @@ fun rememberAutoFocus(enabled: Boolean, key: Any? = Unit): FocusRequester? {
         try { fr.requestFocus() } catch (_: Exception) { }
     }
     return fr
+}
+
+/** Image TMDB d'un film (« movie ») ou d'une série (« tv ») ; null tant qu'elle n'est pas trouvée. */
+@Composable
+fun rememberTmdbArt(kind: String?, name: String): com.lumo.tv.data.TmdbArt.Art? {
+    if (kind == null) return null
+    val key = com.lumo.tv.data.TmdbArt.key
+    val initial = remember(kind, name, key) { if (key.isBlank()) null else com.lumo.tv.data.TmdbArt.cached(kind, name)?.takeIf { it.poster.isNotBlank() || it.backdrop.isNotBlank() } }
+    val st = produceState(initial, kind, name, key) {
+        if (value == null && key.isNotBlank()) value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.lumo.tv.data.TmdbArt.lookup(kind, name) }
+    }
+    return st.value
 }

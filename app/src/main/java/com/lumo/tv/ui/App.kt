@@ -22,6 +22,7 @@ import com.lumo.tv.player.PlayerScreen
 
 @Composable
 fun LumoApp(m: AppModel) {
+    LaunchedEffect(m.tmdbKey) { com.lumo.tv.data.TmdbArt.key = m.tmdbKey }
     LumoTheme {
         Box(Modifier.fillMaxSize().background(C.Bg)) {
             BackHandler(enabled = m.stack.size > 1 || (m.current == Screen.Main && m.tab != Tab.Home)) {

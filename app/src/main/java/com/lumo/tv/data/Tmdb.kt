@@ -4,6 +4,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.net.URLEncoder
+import kotlinx.coroutines.sync.withPermit
 
 /** TMDB : vraies images d'épisodes + titres et résumés en français (clé de l'utilisateur). */
 object Tmdb {
@@ -58,5 +59,84 @@ object Tmdb {
         } catch (_: Exception) { }
         synchronized(seasonCache) { seasonCache[ck] = map }
         return map
+    }
+}
+
+/** Affiches et grandes images TMDB pour films et séries (avec cache sur l'appareil). */
+object TmdbArt {
+    data class Art(val poster: String, val backdrop: String)
+    private val keyState = androidx.compose.runtime.mutableStateOf("")
+    var key: String
+        get() = keyState.value
+        set(v) { if (keyState.value != v) keyState.value = v }
+    @Volatile var http: OkHttpClient? = null
+    private var prefs: android.content.SharedPreferences? = null
+    private val mem = java.util.concurrent.ConcurrentHashMap<String, Art>()
+    private val limiter = kotlinx.coroutines.sync.Semaphore(6)
+    private val NONE = Art("", "")
+
+    fun init(ctx: android.content.Context, client: OkHttpClient) {
+        prefs = ctx.getSharedPreferences("tmdb_art", android.content.Context.MODE_PRIVATE)
+        http = client
+    }
+
+    private fun norm(s: String) = java.text.Normalizer.normalize(s.lowercase(), java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{Mn}+"), "").replace(Regex("[^a-z0-9]"), "")
+
+    /** « FR - Malfaisante (2026) » → (« Malfaisante », « 2026 ») */
+    fun split(raw: String): Pair<String, String> {
+        val year = Regex("""\((\d{4})\)""").find(raw)?.groupValues?.get(1)
+            ?: Regex("""\b(19|20)\d{2}\s*$""").find(raw.trim())?.value?.trim() ?: ""
+        val name = Tmdb.cleanName(raw).replace(Regex("""\b(19|20)\d{2}\s*$"""), "").trim()
+        return name to year
+    }
+
+    fun cached(kind: String, raw: String): Art? {
+        val k = "$kind|$raw"
+        mem[k]?.let { return it }
+        val v = prefs?.getString(k, null) ?: return null
+        val parts = v.split("|")
+        val ts = parts.getOrNull(2)?.toLongOrNull() ?: 0L
+        val art = Art(parts.getOrNull(0) ?: "", parts.getOrNull(1) ?: "")
+        // Un « pas trouvé » est retenté au bout de 7 jours
+        if (art == NONE && System.currentTimeMillis() - ts > 7L * 86_400_000) return null
+        mem[k] = art
+        return art
+    }
+
+    suspend fun lookup(kind: String, raw: String): Art? {
+        val apiKey = key
+        val client = http ?: return null
+        if (apiKey.isBlank() || raw.isBlank()) return null
+        cached(kind, raw)?.let { return it.takeIf { a -> a != NONE } }
+        return limiter.withPermit {
+            cached(kind, raw)?.let { return@withPermit it.takeIf { a -> a != NONE } }
+            val (name, year) = split(raw)
+            val art = try {
+                val yp = if (year.isNotBlank()) (if (kind == "movie") "&year=$year" else "&first_air_date_year=$year") else ""
+                val url = "https://api.themoviedb.org/3/search/$kind?api_key=$apiKey&language=fr-FR&query=" + java.net.URLEncoder.encode(name, "UTF-8") + yp
+                val res = client.newCall(okhttp3.Request.Builder().url(url).build()).execute().use { r ->
+                    if (r.isSuccessful) r.body?.string()?.let { org.json.JSONObject(it).optJSONArray("results") } else null
+                }
+                if (res == null || res.length() == 0) NONE else {
+                    val list = (0 until res.length()).map { res.getJSONObject(it) }
+                    val target = norm(name)
+                    val titleKey = if (kind == "movie") "title" else "name"
+                    val origKey = if (kind == "movie") "original_title" else "original_name"
+                    val best = list.firstOrNull { norm(it.optString(titleKey)) == target || norm(it.optString(origKey)) == target }
+                        ?: list.first().takeIf { year.isNotBlank() }   // avec l'année, le 1er résultat est fiable
+                    if (best == null) NONE else Art(
+                        best.optString("poster_path").takeIf { it.startsWith("/") }?.let { "https://image.tmdb.org/t/p/w342$it" } ?: "",
+                        best.optString("backdrop_path").takeIf { it.startsWith("/") }?.let { "https://image.tmdb.org/t/p/w1280$it" } ?: ""
+                    )
+                }
+            } catch (_: Exception) { null }
+            if (art != null) {
+                val k = "$kind|$raw"
+                mem[k] = art
+                prefs?.edit()?.putString(k, "${art.poster}|${art.backdrop}|${System.currentTimeMillis()}")?.apply()
+            }
+            art?.takeIf { it != NONE }
+        }
     }
 }

@@ -94,7 +94,7 @@ fun HomeScreen(m: AppModel) {
         if (myList.isNotEmpty()) item {
             RowSection("Ma liste") {
                 items(myList, key = { "fav" + it.first.first + it.second.javaClass.simpleName }) { (t, obj) ->
-                    PosterCard(t.second, t.third, cardW) { openItem(m, obj) }
+                    PosterCard(t.second, t.third, cardW, kind = if (obj is Series) "tv" else "movie") { openItem(m, obj) }
                 }
             }
         }
@@ -109,12 +109,12 @@ fun HomeScreen(m: AppModel) {
         }
         if (recentVods.isNotEmpty() && !anim) item {
             RowSection("Films ajoutés récemment") {
-                items(recentVods, key = { "rv" + it.id }) { v -> PosterCard(v.name, v.icon, cardW) { m.go(Screen.MovieDetail(v)) } }
+                items(recentVods, key = { "rv" + it.id }) { v -> PosterCard(v.name, v.icon, cardW, kind = "movie") { m.go(Screen.MovieDetail(v)) } }
             }
         }
         if (recentSeries.isNotEmpty()) item {
             RowSection("Séries mises à jour") {
-                items(recentSeries, key = { "rs" + it.id }) { s -> PosterCard(s.name, s.cover, cardW) { m.go(Screen.SeriesDetail(s)) } }
+                items(recentSeries, key = { "rs" + it.id }) { s -> PosterCard(s.name, s.cover, cardW, kind = "tv") { m.go(Screen.SeriesDetail(s)) } }
             }
         }
         val cats = m.visibleCats("vod").take(8)
@@ -122,7 +122,7 @@ fun HomeScreen(m: AppModel) {
             val list = byCat[c.id].orEmpty().take(40)
             if (list.isNotEmpty()) item(key = "cat" + c.id) {
                 RowSection(c.name) {
-                    items(list, key = { "c${c.id}_" + it.id }) { v -> PosterCard(v.name, v.icon, cardW) { m.go(Screen.MovieDetail(v)) } }
+                    items(list, key = { "c${c.id}_" + it.id }) { v -> PosterCard(v.name, v.icon, cardW, kind = "movie") { m.go(Screen.MovieDetail(v)) } }
                 }
             }
         }
@@ -131,7 +131,7 @@ fun HomeScreen(m: AppModel) {
             val list = serByCat[c.id].orEmpty().take(40)
             if (list.isNotEmpty()) item(key = "scat" + c.id) {
                 RowSection(c.name) {
-                    items(list, key = { "s${c.id}_" + it.id }) { s -> PosterCard(s.name, s.cover, cardW) { m.go(Screen.SeriesDetail(s)) } }
+                    items(list, key = { "s${c.id}_" + it.id }) { s -> PosterCard(s.name, s.cover, cardW, kind = "tv") { m.go(Screen.SeriesDetail(s)) } }
                 }
             }
         }
@@ -147,7 +147,7 @@ fun openItem(m: AppModel, obj: Any) {
 
 @Composable
 private fun ProgressCard(m: AppModel, p: Progress, w: androidx.compose.ui.unit.Dp, vods: Map<String, Vod>, series: Map<String, Series>) {
-    PosterCard(p.title, p.img, w, progress = p.fraction, badge = p.subtitle.ifBlank { null }) {
+    PosterCard(p.title, p.img, w, progress = p.fraction, badge = p.subtitle.ifBlank { null }, kind = if (p.kind == "vod") "movie" else "tv") {
         if (p.kind == "vod") {
             val v = vods[p.itemId] ?: Vod(p.itemId, p.title, p.img, "", "", p.ext, 0)
             m.go(Screen.MovieDetail(v))
@@ -195,7 +195,8 @@ private fun Hero(m: AppModel, v: Vod, onNoImage: () -> Unit = {}) {
     } else 1f
     Box(Modifier.fillMaxWidth().height(h).clipToBounds()) {
         // Images à essayer dans l'ordre : grande image, affiche ; si aucune ne marche → film suivant
-        val imgs = listOfNotNull(info?.backdrop?.ifBlank { null }, v.icon.ifBlank { null }).distinct()
+        val tart = rememberTmdbArt("movie", v.name)
+        val imgs = listOfNotNull(tart?.backdrop?.ifBlank { null }, info?.backdrop?.ifBlank { null }, v.icon.ifBlank { null }).distinct()
         var ci by remember(v.id, imgs.size) { mutableIntStateOf(0) }
         val img = imgs.getOrNull(ci)
         var allFailed by remember(v.id, imgs.size) { mutableStateOf(false) }

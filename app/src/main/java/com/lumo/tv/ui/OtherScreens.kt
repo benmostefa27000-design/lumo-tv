@@ -100,12 +100,12 @@ fun SearchScreen(m: AppModel) {
         else if (q.trim().length >= 2 && vods.isEmpty() && series.isEmpty() && live.isEmpty()) item { Empty("Aucun résultat pour « $q »") }
         if (vods.isNotEmpty()) item {
             CompositionLocalProvider(LocalPad provides pad) {
-                RowSection("Films") { items(vods, key = { it.id }) { v -> PosterCard(v.name, v.icon, cardW) { m.go(Screen.MovieDetail(v)) } } }
+                RowSection("Films") { items(vods, key = { it.id }) { v -> PosterCard(v.name, v.icon, cardW, kind = "movie") { m.go(Screen.MovieDetail(v)) } } }
             }
         }
         if (series.isNotEmpty()) item {
             CompositionLocalProvider(LocalPad provides pad) {
-                RowSection("Séries") { items(series, key = { it.id }) { s -> PosterCard(s.name, s.cover, cardW) { m.go(Screen.SeriesDetail(s)) } } }
+                RowSection("Séries") { items(series, key = { it.id }) { s -> PosterCard(s.name, s.cover, cardW, kind = "tv") { m.go(Screen.SeriesDetail(s)) } } }
             }
         }
         if (live.isNotEmpty()) {

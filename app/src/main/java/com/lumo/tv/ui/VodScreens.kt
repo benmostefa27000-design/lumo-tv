@@ -50,12 +50,12 @@ fun VodBrowser(m: AppModel, series: Boolean) {
         if (series) {
             val list = remember(sel, m.series) { m.series.filter { it.catId == sel } }
             LazyVerticalGrid(GridCells.Adaptive(cardW), mod, contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(list, key = { it.id }) { s -> PosterCard(s.name, s.cover, cardW) { m.go(Screen.SeriesDetail(s)) } }
+                items(list, key = { it.id }) { s -> PosterCard(s.name, s.cover, cardW, kind = "tv") { m.go(Screen.SeriesDetail(s)) } }
             }
         } else {
             val list = remember(sel, m.vods) { m.vods.filter { it.catId == sel }.sortedByDescending { it.added } }
             LazyVerticalGrid(GridCells.Adaptive(cardW), mod, contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(list, key = { it.id }) { v -> PosterCard(v.name, v.icon, cardW) { m.go(Screen.MovieDetail(v)) } }
+                items(list, key = { it.id }) { v -> PosterCard(v.name, v.icon, cardW, kind = "movie") { m.go(Screen.MovieDetail(v)) } }
             }
         }
     }
@@ -98,8 +98,8 @@ fun MyListScreen(m: AppModel) {
     val cardW = if (m.isTv) 140.dp else 108.dp
     if (vods.isEmpty() && series.isEmpty()) { Empty("Ta liste est vide. Ajoute des films et des séries avec le bouton « Ma liste ».") ; return }
     LazyVerticalGrid(GridCells.Adaptive(cardW), Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = LocalPad.current, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        items(vods, key = { "v" + it.id }) { v -> PosterCard(v.name, v.icon, cardW, badge = "FILM") { m.go(Screen.MovieDetail(v)) } }
-        items(series, key = { "s" + it.id }) { s -> PosterCard(s.name, s.cover, cardW, badge = "SÉRIE") { m.go(Screen.SeriesDetail(s)) } }
+        items(vods, key = { "v" + it.id }) { v -> PosterCard(v.name, v.icon, cardW, badge = "FILM", kind = "movie") { m.go(Screen.MovieDetail(v)) } }
+        items(series, key = { "s" + it.id }) { s -> PosterCard(s.name, s.cover, cardW, badge = "SÉRIE", kind = "tv") { m.go(Screen.SeriesDetail(s)) } }
     }
 }
 
@@ -113,7 +113,8 @@ fun MovieDetailScreen(m: AppModel, v: Vod) {
     val fav = m.isFav("vod", v.id)
     val pad = if (m.isTv) 56.dp else 18.dp
     Box(Modifier.fillMaxSize()) {
-        val img = info?.backdrop?.ifBlank { null } ?: v.icon
+        val tart = rememberTmdbArt("movie", v.name)
+        val img = tart?.backdrop?.ifBlank { null } ?: info?.backdrop?.ifBlank { null } ?: v.icon
         if (img.isNotBlank()) AsyncImage(model = img, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         Box(Modifier.fillMaxSize().background(leftFade()))
         Box(Modifier.fillMaxSize().background(bottomFade()))
@@ -161,6 +162,7 @@ fun MovieDetailScreen(m: AppModel, v: Vod) {
 @Composable
 fun SeriesDetailScreen(m: AppModel, s: Series) {
     var info by remember(s.id) { mutableStateOf<SeriesInfo?>(null) }
+    val tart = rememberTmdbArt("tv", s.name)
     var error by remember { mutableStateOf(false) }
     LaunchedEffect(s.id) {
         info = withContext(Dispatchers.IO) { try { m.client?.seriesInfo(s.id) } catch (_: Exception) { error = true; null } }
@@ -177,7 +179,7 @@ fun SeriesDetailScreen(m: AppModel, s: Series) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item {
             Box(Modifier.fillMaxWidth().height(if (m.isTv) 380.dp else 300.dp)) {
-                val img = i?.backdrop?.ifBlank { null } ?: s.cover
+                val img = tart?.backdrop?.ifBlank { null } ?: i?.backdrop?.ifBlank { null } ?: s.cover
                 if (img.isNotBlank()) AsyncImage(model = img, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                 Box(Modifier.fillMaxSize().background(leftFade()))
                 Box(Modifier.fillMaxSize().background(bottomFade()))

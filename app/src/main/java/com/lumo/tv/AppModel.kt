@@ -73,6 +73,7 @@ class AppModel(private val context: Context) {
     }
 
     val store = Store(context)
+    init { com.lumo.tv.data.TmdbArt.init(context, http); com.lumo.tv.data.TmdbArt.key = store.tmdbKey() }
     val sync = SyncClient(BuildConfig.SYNC_URL, http)
 
     val isTv: Boolean = run {
