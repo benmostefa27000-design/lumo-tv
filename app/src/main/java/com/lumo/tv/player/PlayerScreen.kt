@@ -103,6 +103,14 @@ class ZapPlayerView(context: Context) : PlayerView(context) {
     private var bStartY = 0f
     private var bStartLevel = 0.5f
     private var bTracking = false
+    private var bRight = false
+    var onVolume: ((Float) -> Unit)? = null
+    private val audio = context.getSystemService(android.content.Context.AUDIO_SERVICE) as? android.media.AudioManager
+    private fun currentVolume(): Float {
+        val am = audio ?: return 0.5f
+        val max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        return am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) / max.toFloat()
+    }
     private var bActive = false
     private val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop * 2
 
@@ -124,27 +132,34 @@ class ZapPlayerView(context: Context) : PlayerView(context) {
             when (ev.actionMasked) {
                 android.view.MotionEvent.ACTION_DOWN -> {
                     // Pas sur le haut de l'écran (barre de notifications) ni sur la moitié droite
-                    bTracking = ev.x < width / 2f && ev.y > height * 0.15f && ev.y < height * 0.9f
+                    bTracking = ev.y > height * 0.15f && ev.y < height * 0.9f
+                    bRight = ev.x >= width / 2f
                     bActive = false; bStartY = ev.y
                 }
                 android.view.MotionEvent.ACTION_MOVE -> if (bTracking) {
                     val dy = bStartY - ev.y
                     if (!bActive && Math.abs(dy) > slop) {
-                        bActive = true; bStartY = ev.y; bStartLevel = currentBrightness()
+                        bActive = true; bStartY = ev.y; bStartLevel = if (bRight) currentVolume() else currentBrightness()
                         val cancel = android.view.MotionEvent.obtain(ev).apply { action = android.view.MotionEvent.ACTION_CANCEL }
                         super.dispatchTouchEvent(cancel); cancel.recycle()
                     }
                     if (bActive) {
                         val level = (bStartLevel + (bStartY - ev.y) / (height * 0.8f)).coerceIn(0.02f, 1f)
-                        window()?.let { w -> val a = w.attributes; a.screenBrightness = level; w.attributes = a }
-                        onBrightness?.invoke(level)
+                        if (bRight) {
+                            val lv = (bStartLevel + (bStartY - ev.y) / (height * 0.8f)).coerceIn(0f, 1f)
+                            audio?.let { am -> am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, Math.round(lv * am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)), 0) }
+                            onVolume?.invoke(lv)
+                        } else {
+                            window()?.let { w -> val a = w.attributes; a.screenBrightness = level; w.attributes = a }
+                            onBrightness?.invoke(level)
+                        }
                         return true
                     }
                 }
                 android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
                     val was = bActive
                     bTracking = false; bActive = false
-                    if (was) { onBrightness?.invoke(-1f); return true }
+                    if (was) { if (bRight) onVolume?.invoke(-1f) else onBrightness?.invoke(-1f); return true }
                 }
             }
         }
@@ -192,6 +207,8 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     var chanList by remember { mutableStateOf(false) }
     var brightShown by remember { mutableFloatStateOf(-1f) }
     var brightHideAt by remember { mutableLongStateOf(0L) }
+    var volShown by remember { mutableFloatStateOf(-1f) }
+    var volHideAt by remember { mutableLongStateOf(0L) }
     var videoMode by remember { mutableIntStateOf(m.store.videoMode) }
     val modeNames = listOf("Adapté", "Plein écran", "Étiré", "Zoom 120 %", "Zoom 135 %")
     fun nextVideoMode() {
@@ -591,6 +608,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 v.swipeZap = false
                 v.brightGesture = !m.isTv
                 v.onBrightness = { lvl -> if (lvl >= 0f) { brightShown = lvl; brightHideAt = Long.MAX_VALUE } else brightHideAt = System.currentTimeMillis() + 800 }
+                v.onVolume = { lvl -> if (lvl >= 0f) { volShown = lvl; volHideAt = Long.MAX_VALUE } else volHideAt = System.currentTimeMillis() + 800 }
                 v.onZap = if (it is Playable.Live && it.list.size > 1) { dir ->
                     val n = it.list.size
                     item = it.copy(index = ((it.index + dir) % n + n) % n)
@@ -745,6 +763,24 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     Box(Modifier.fillMaxWidth().fillMaxHeight(brightShown).background(Color.White, RoundedCornerShape(3.dp)))
                 }
                 Text("${(brightShown * 100).toInt()} %", color = Color.White, fontSize = 12.sp)
+            }
+        }
+
+        LaunchedEffect(volHideAt) {
+            if (volHideAt != Long.MAX_VALUE && volHideAt > 0) { delay((volHideAt - System.currentTimeMillis()).coerceAtLeast(0)); volShown = -1f }
+        }
+        if (volShown >= 0f && !m.pip) {
+            Column(
+                Modifier.align(Alignment.CenterEnd).padding(end = 40.dp)
+                    .background(Color(0xAA000000), RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(if (volShown == 0f) "🔇" else "🔊", color = Color.White, fontSize = 18.sp)
+                Box(Modifier.width(6.dp).height(120.dp).background(Color(0x55FFFFFF), RoundedCornerShape(3.dp)), contentAlignment = Alignment.BottomCenter) {
+                    Box(Modifier.fillMaxWidth().fillMaxHeight(volShown).background(Color.White, RoundedCornerShape(3.dp)))
+                }
+                Text("${(volShown * 100).toInt()} %", color = Color.White, fontSize = 12.sp)
             }
         }
 
