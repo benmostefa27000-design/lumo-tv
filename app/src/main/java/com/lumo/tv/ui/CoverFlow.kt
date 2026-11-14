@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -49,14 +50,23 @@ data class FlowItem(val id: String, val title: String, val image: String, val me
  * au doigt sur le téléphone, avec gauche/droite sur la télécommande.
  */
 @Composable
-fun CoverFlow(title: String, items: List<FlowItem>, isTv: Boolean, onOpen: (Int) -> Unit) {
+fun CoverFlow(
+    title: String?,
+    items: List<FlowItem>,
+    isTv: Boolean,
+    startIndex: Int = 2,
+    width: androidx.compose.ui.unit.Dp? = null,
+    focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
+    card: (@Composable (FlowItem) -> Unit)? = null,
+    onOpen: (Int) -> Unit
+) {
     if (items.isEmpty()) return
     val scope = rememberCoroutineScope()
     val last = items.lastIndex
-    val pos = remember(items.size) { Animatable(min(2, last).toFloat()) }
+    val pos = remember(items.size) { Animatable(min(startIndex.coerceAtLeast(0), last).toFloat()) }
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
-    val cardW = if (isTv) 200.dp else 170.dp
+    val cardW = width ?: if (isTv) 200.dp else 170.dp
     val cardH = cardW * 1.5f
     val near1 = with(density) { (if (isTv) 160.dp else 108.dp).toPx() }
     val far = with(density) { (if (isTv) 75.dp else 46.dp).toPx() }
@@ -74,12 +84,13 @@ fun CoverFlow(title: String, items: List<FlowItem>, isTv: Boolean, onOpen: (Int)
     }
 
     Column(Modifier.fillMaxWidth().padding(top = 18.dp)) {
-        SectionTitle(title, Modifier.padding(start = LocalPad.current, bottom = 4.dp))
+        if (title != null) SectionTitle(title, Modifier.padding(start = LocalPad.current, bottom = 4.dp))
         Box(
             Modifier
                 .fillMaxWidth()
                 .height(cardH + cardH * 0.3f + 30.dp)
                 .clipToBounds()
+                .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                 .onFocusChanged { focused = it.hasFocus || it.isFocused }
                 .onKeyEvent { e ->
                     if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
@@ -140,8 +151,10 @@ fun CoverFlow(title: String, items: List<FlowItem>, isTv: Boolean, onOpen: (Int)
                             Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)).background(C.Card2)
                                 .then(if (isCenter && focused) Modifier.border(3.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
                         ) {
-                            Text(item.title, color = C.Sub, fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.align(Alignment.Center).padding(10.dp))
-                            if (item.image.isNotBlank()) AsyncImage(model = item.image, contentDescription = item.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            if (card != null) card(item) else {
+                                Text(item.title, color = C.Sub, fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.align(Alignment.Center).padding(10.dp))
+                                if (item.image.isNotBlank()) AsyncImage(model = item.image, contentDescription = item.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            }
                             // Assombrir les affiches sur les côtés
                             if (a > 0.05f) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = (min(a, 3f) * 0.16f))))
                         }
@@ -149,7 +162,8 @@ fun CoverFlow(title: String, items: List<FlowItem>, isTv: Boolean, onOpen: (Int)
                         Box(
                             Modifier.offset(y = cardH + 6.dp).fillMaxWidth().height(cardH * 0.3f).clipToBounds()
                         ) {
-                            if (item.image.isNotBlank()) AsyncImage(
+                            if (card != null) Box(Modifier.requiredSize(cardW, cardH).align(Alignment.TopCenter).graphicsLayer { scaleY = -1f; alpha = 0.35f }.clip(RoundedCornerShape(8.dp))) { card(item) }
+                            else if (item.image.isNotBlank()) AsyncImage(
                                 model = item.image, contentDescription = null, contentScale = ContentScale.Crop,
                                 modifier = Modifier.requiredSize(cardW, cardH).align(Alignment.TopCenter).graphicsLayer { scaleY = -1f; alpha = 0.35f }
                             )
