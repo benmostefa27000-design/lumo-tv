@@ -206,6 +206,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     var banner by remember { mutableStateOf<String?>(null) }
     var chanList by remember { mutableStateOf(false) }
     var subsPanel by remember { mutableStateOf(false) }
+    var autoNextAt by remember { mutableLongStateOf(0L) }
     var tracksTick by remember { mutableIntStateOf(0) }
     var brightShown by remember { mutableFloatStateOf(-1f) }
     var brightHideAt by remember { mutableLongStateOf(0L) }
@@ -446,6 +447,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     if (it is Playable.Ep && it.index + 1 < it.episodes.size) {
                         item = it.copy(index = it.index + 1, fromStart = true)
                         m.showToast("Épisode suivant")
+                        autoNextAt = System.currentTimeMillis()
                     }
                 }
             }
@@ -465,7 +467,9 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             override fun onPlayerError(error: PlaybackException) {
                 val code = (error.cause as? HttpDataSource.InvalidResponseCodeException)?.responseCode
                 if (code != null && code in listOf(401, 403, 405, 456, 458, 509, 429)) {
-                    errorMsg = "Ton abonnement est déjà utilisé sur un autre écran (code $code), ou la connexion précédente n'est pas encore libérée."
+                    errorMsg = if (System.currentTimeMillis() - autoNextAt < 60_000)
+                        "Épisode suivant : ton fournisseur n'a pas encore libéré l'écran de l'épisode précédent (code $code). Il démarre tout seul dès que c'est bon, rien à faire."
+                    else "Ton abonnement est déjà utilisé sur un autre écran (code $code), ou la connexion précédente n'est pas encore libérée."
                     busyRetry++; busyCountdown = 1
                     return
                 }
