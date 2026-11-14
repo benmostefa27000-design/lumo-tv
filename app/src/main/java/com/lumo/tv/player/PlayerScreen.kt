@@ -528,6 +528,19 @@ fun PlayerScreen(m: AppModel, start: Playable) {
         poke()
         return true
     }
+    /** Série : épisode précédent / suivant sans quitter le lecteur (reprend où on s'était arrêté). */
+    fun epStep(dir: Int): Boolean {
+        val it = item
+        if (it !is Playable.Ep) return false
+        val ni = it.index + dir
+        if (ni !in it.episodes.indices) { m.showToast(if (dir > 0) "Dernier épisode de la saison" else "Premier épisode de la saison"); return false }
+        saveProgress()
+        val e = it.episodes[ni]
+        item = it.copy(index = ni, fromStart = false)
+        m.showToast("S${e.season} É${e.num}")
+        poke()
+        return true
+    }
     fun seekBy(ms: Long) {
         player.seekTo((player.currentPosition + ms).coerceAtLeast(0))
         posMs = player.currentPosition
@@ -546,6 +559,8 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             KeyEvent.KEYCODE_MEDIA_PAUSE -> { player.pause(); poke(); true }
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP -> { if (!(live && zap(-1))) poke(); true }
             KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN -> { if (!(live && zap(1))) poke(); true }
+            KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_PAGE_DOWN -> { if (!epStep(1)) poke(); true }
+            KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_PAGE_UP -> { if (!epStep(-1)) poke(); true }
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> { if (!live) seekBy(-10_000) else poke(); true }
             KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { if (!live) seekBy(30_000) else poke(); true }
             KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_SETTINGS, KeyEvent.KEYCODE_INFO -> { panel = true; true }
@@ -748,6 +763,22 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             }
         }
 
+        // Téléphone : épisode précédent / suivant (séries), mêmes boutons que pour les chaînes
+        if (!m.isTv && !m.pip && !subsPanel && !panel && errorMsg == null && uiVisible && item is Playable.Ep) {
+            val ep = item as Playable.Ep
+            listOf(-1 to Alignment.CenterStart, 1 to Alignment.CenterEnd).forEach { (dir, al) ->
+                if (ep.index + dir in ep.episodes.indices) Column(
+                    Modifier.align(al).padding(horizontal = 22.dp).clickable { epStep(dir) },
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(Modifier.size(56.dp).background(Color(0x66000000), androidx.compose.foundation.shape.CircleShape), contentAlignment = Alignment.Center) {
+                        Text(if (dir < 0) "‹" else "›", color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
+                    }
+                    Text("É${ep.episodes[ep.index + dir].num}", color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp).background(Color(0x66000000), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
+                }
+            }
+        }
+
         // Téléphone : boutons chaîne précédente / suivante, qui apparaissent et s'effacent avec le bouton pause
         if (!m.isTv && !m.pip && !chanList && !panel && errorMsg == null && uiVisible && item is Playable.Live && (item as Playable.Live).list.size > 1) {
             listOf(-1 to Alignment.CenterStart, 1 to Alignment.CenterEnd).forEach { (dir, al) ->
@@ -921,6 +952,10 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     LumoButton("Remettre à 0", primary = false) { setDelay(0) }
                     LumoButton("Fermer", primary = false) { panel = false }
+                }
+                if (m.isTv && item is Playable.Ep) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    LumoButton("‹ Épisode précédent", primary = false) { if (epStep(-1)) panel = false }
+                    LumoButton("Épisode suivant ›", primary = false) { if (epStep(1)) panel = false }
                 }
                 if (m.isTv) LumoButton("Image : " + modeNames[videoMode], primary = false) { nextVideoMode() }
                 if (m.isTv) {
