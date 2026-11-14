@@ -162,11 +162,15 @@ fun MovieDetailScreen(m: AppModel, v: Vod) {
 fun SeriesDetailScreen(m: AppModel, s: Series) {
     var info by remember(s.id) { mutableStateOf<SeriesInfo?>(null) }
     var error by remember { mutableStateOf(false) }
-    LaunchedEffect(s.id) { info = withContext(Dispatchers.IO) { try { m.client?.seriesInfo(s.id) } catch (_: Exception) { error = true; null } } }
+    LaunchedEffect(s.id) {
+        info = withContext(Dispatchers.IO) { try { m.client?.seriesInfo(s.id) } catch (_: Exception) { error = true; null } }
+        // Titres et images manquants complétés depuis TVmaze (en arrière-plan)
+        info?.let { base -> info = withContext(Dispatchers.IO) { try { com.lumo.tv.data.Tvmaze.enrich(m.http, s.name, s.cover, base) } catch (_: Exception) { base } } }
+    }
     val progress = m.progressList().filter { it.kind == "ep" && it.parentId == s.id }
     val last = progress.maxByOrNull { it.ts }
     val i = info
-    var season by remember(i) { mutableStateOf(i?.episodes?.entries?.firstOrNull { e -> e.value.any { it.id == last?.itemId } }?.key ?: i?.seasons?.firstOrNull() ?: 1) }
+    var season by remember(i == null) { mutableStateOf(i?.episodes?.entries?.firstOrNull { e -> e.value.any { it.id == last?.itemId } }?.key ?: i?.seasons?.firstOrNull() ?: 1) }
     val fav = m.isFav("series", s.id)
     val pad = if (m.isTv) 56.dp else 16.dp
 
