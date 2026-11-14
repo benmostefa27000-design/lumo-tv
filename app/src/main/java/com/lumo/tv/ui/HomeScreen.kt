@@ -198,10 +198,11 @@ private fun Hero(m: AppModel, v: Vod, onNoImage: () -> Unit = {}) {
         val imgs = listOfNotNull(info?.backdrop?.ifBlank { null }, v.icon.ifBlank { null }).distinct()
         var ci by remember(v.id, imgs.size) { mutableIntStateOf(0) }
         val img = imgs.getOrNull(ci)
-        LaunchedEffect(v.id, imgs.size) { if (imgs.isEmpty()) onNoImage() }
+        var allFailed by remember(v.id, imgs.size) { mutableStateOf(false) }
+        LaunchedEffect(infoDone, allFailed, imgs.size) { if (infoDone && (allFailed || imgs.isEmpty())) onNoImage() }
         if (img != null) AsyncImage(
             model = img, contentDescription = null, contentScale = ContentScale.Crop,
-            onError = { if (ci + 1 < imgs.size) ci++ else if (infoDone) onNoImage() },
+            onError = { if (ci + 1 < imgs.size) ci++ else allFailed = true },
             modifier = Modifier.fillMaxSize().graphicsLayer { scaleX = kb; scaleY = kb }
         )
         Box(Modifier.fillMaxSize().background(leftFade()))
