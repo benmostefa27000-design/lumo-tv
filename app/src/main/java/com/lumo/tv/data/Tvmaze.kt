@@ -86,7 +86,9 @@ object Tvmaze {
                     (if (ep.title.isBlank()) newName else "${ep.title.trim()} - $newName") else ep.title
                 val alt = d?.still?.ifBlank { null } ?: t?.img?.ifBlank { null } ?: pool.getOrNull(n % pool.size.coerceAtLeast(1)) ?: ""
                 n++
-                ep.copy(title = title, plot = ep.plot.ifBlank { d?.overview?.ifBlank { null } ?: t?.summary ?: "" }, alt = alt)
+                ep.copy(title = title, plot = ep.plot.ifBlank { d?.overview?.ifBlank { null } ?: t?.summary ?: "" }, alt = alt,
+                    // Image TMDB (meilleure qualité) : elle remplace celle du fournisseur, même quand celle-ci existe
+                    img = d?.still?.ifBlank { null } ?: ep.img)
             }
         }
         return info.copy(episodes = eps, images = (info.images + tm?.images.orEmpty()).distinct())
