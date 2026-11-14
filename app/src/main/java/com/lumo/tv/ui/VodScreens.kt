@@ -245,7 +245,7 @@ fun SeriesDetailScreen(m: AppModel, s: Series) {
                                 }
                             }
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text("${e.num}. ${e.title.ifBlank { "Épisode ${e.num}" }}", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text("${e.num}. ${com.lumo.tv.data.cleanEpisodeTitle(e.title, s.name).ifBlank { "Épisode ${e.num}" }}", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 val sub = listOfNotNull(
                                     e.durationSecs.takeIf { it > 0 }?.let { "${it / 60} min" },
                                     when { p == null -> null; p.finished -> "vu"; else -> "reste ${((p.dur - p.pos) / 60000).coerceAtLeast(1)} min" }

@@ -193,3 +193,14 @@ fun JSONArray.objects(): List<JSONObject> {
     for (n in 0 until length()) optJSONObject(n)?.let { out.add(it) }
     return out
 }
+
+/** « FR - Platane - S01E03 - La fois où… » → « La fois où… » (on enlève le nom de la série et le code d'épisode). */
+fun cleanEpisodeTitle(title: String, seriesName: String): String {
+    var t = title.trim()
+    val sn = seriesName.trim()
+    if (sn.isNotBlank() && t.startsWith(sn, ignoreCase = true)) t = t.substring(sn.length)
+    t = t.replace(Regex("""^[\s\-–|:.]*"""), "")
+    t = t.replace(Regex("""^(?i)s\d{1,2}\s*e\d{1,3}"""), "")
+    t = t.replace(Regex("""^[\s\-–|:.]*"""), "")
+    return t
+}

@@ -247,7 +247,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
         is Playable.Movie -> Resolved(client.vodUrl(p.vod.id, p.vod.ext), p.vod.name, "", "vod_${p.vod.id}", false)
         is Playable.Ep -> {
             val e = p.episodes[p.index]
-            Resolved(client.episodeUrl(e.id, e.ext), p.series.name, "S${e.season} É${e.num}${if (e.title.isNotBlank()) " · " + e.title else ""}", "ep_${e.id}", false)
+            Resolved(client.episodeUrl(e.id, e.ext), p.series.name, "S${e.season} É${e.num}${com.lumo.tv.data.cleanEpisodeTitle(e.title, p.series.name).let { t -> if (t.isNotBlank()) " · " + t else "" }}", "ep_${e.id}", false)
         }
         is Playable.Replay -> Resolved(client.timeshiftUrl(p.stream.id, p.entry), p.entry.title, "${p.stream.name} · Rattrapage", null, false)
     }
@@ -636,7 +636,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 Column(Modifier.weight(1f)) {
                     Text(r.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     val sub = if (item is Playable.Live && cur != null) "En direct · ${cur.title}" else r.subtitle
-                    if (sub.isNotBlank()) Text(sub, color = C.Sub, fontSize = 14.sp, maxLines = 1)
+                    if (sub.isNotBlank()) Text(sub, color = C.Sub, fontSize = 14.sp, maxLines = 2, lineHeight = 17.sp, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
                 if (m.isTv) {
                     Text(
