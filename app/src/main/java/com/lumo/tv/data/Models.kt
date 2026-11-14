@@ -116,7 +116,9 @@ data class Episode(
     val ext: String,
     val img: String,
     val plot: String,
-    val durationSecs: Int
+    val durationSecs: Int,
+    /** Vignette de repli propre à l'épisode (choisie parmi les images de la série). */
+    val alt: String = ""
 )
 
 data class SeriesInfo(
@@ -127,7 +129,9 @@ data class SeriesInfo(
     val year: String,
     val rating: String,
     val seasons: List<Int>,
-    val episodes: Map<Int, List<Episode>>
+    val episodes: Map<Int, List<Episode>>,
+    /** Toutes les grandes images de la série (fournisseur + TVmaze), pour varier les vignettes d'épisodes. */
+    val images: List<String> = emptyList()
 )
 
 data class EpgEntry(

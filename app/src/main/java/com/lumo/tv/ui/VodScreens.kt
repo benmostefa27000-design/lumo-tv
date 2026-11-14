@@ -235,7 +235,7 @@ fun SeriesDetailScreen(m: AppModel, s: Series) {
                             Box(Modifier.width(if (m.isTv) 180.dp else 124.dp).aspectRatio(16f / 9f).background(C.Card2)) {
                                 // Fond : grande image de la série (toujours visible tout de suite).
                                 // Par-dessus : l'image de l'épisode, si elle finit par se charger (certains liens du fournisseur sont morts ou très lents).
-                                val base = (i?.backdrop ?: "").ifBlank { s.cover }
+                                val base = e.alt.ifBlank { (i?.backdrop ?: "").ifBlank { s.cover } }
                                 if (base.isNotBlank()) AsyncImage(model = base, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                                 var epOk by remember(e.id, e.img) { mutableStateOf(true) }
                                 if (e.img.isNotBlank() && e.img != base && epOk) AsyncImage(

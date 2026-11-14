@@ -244,7 +244,12 @@ class XtreamClient(val acc: Account, private val http: OkHttpClient, private val
             }
         }
         val backdrop = info.optJSONArray("backdrop_path")?.optString(0) ?: info.s("cover")
+        val allImgs = buildList {
+            info.optJSONArray("backdrop_path")?.let { a -> for (n in 0 until a.length()) add(a.optString(n)) }
+            add(info.s("cover"))
+        }.filter { it.startsWith("http") }.distinct()
         return SeriesInfo(
+            images = allImgs,
             plot = info.s("plot"),
             backdrop = backdrop,
             cast = info.s("cast"),
