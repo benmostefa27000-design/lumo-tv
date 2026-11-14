@@ -617,7 +617,8 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     Text("${it.index + 1}/${it.list.size}  ${it.list[it.index].name}", color = C.Sub, fontSize = 11.sp, maxLines = 1)
                 }
                 if (cur != null) {
-                    Text("${hhmm.format(Date(cur.start))}–${hhmm.format(Date(cur.end))}  ${cur.title}", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    Text(cur.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, lineHeight = 21.sp)
+                    Text("${hhmm.format(Date(cur.start))} – ${hhmm.format(Date(cur.end))}", color = C.Sub, fontSize = 11.sp)
                     val frac = ((now - cur.start).toFloat() / (cur.end - cur.start)).coerceIn(0f, 1f)
                     Box(Modifier.fillMaxWidth().height(2.dp).background(Color(0x55FFFFFF))) {
                         Box(Modifier.fillMaxHeight().fillMaxWidth(frac).background(C.Red))
