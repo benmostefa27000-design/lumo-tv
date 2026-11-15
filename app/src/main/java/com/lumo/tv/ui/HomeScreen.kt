@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.lumo.tv.ui
 
 import androidx.compose.ui.draw.clip
@@ -110,6 +112,8 @@ fun HomeScreen(m: AppModel) {
 
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val listScope = rememberCoroutineScope()
+    // TV : pas de « défilement pivot » automatique d'Android TV (la page ne bouge que si l'élément sélectionné sort de l'écran)
+    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides MinimalBringIntoView) {
     LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 32.dp)) {
         // Haut de l'accueil classique : grande affiche du film en fondu enchaîné (retour à la version d'avant l'effet iPad)
         // TV : bandeau façon Fire TV (image à droite, texte et boutons à gauche)
@@ -175,6 +179,7 @@ fun HomeScreen(m: AppModel) {
             val list = serByCat[c.id].orEmpty().take(40)
             if (list.isNotEmpty()) item(key = "scat" + c.id) { FlowOrRow(m, c.name, "s${c.id}_", list, cardW) }
         }
+    }
     }
 }
 
@@ -437,7 +442,7 @@ private fun FireHero(m: AppModel, v: Vod, count: Int, index: Int, onStep: (Int) 
         }
     }
     val bg = Color(0xFF101014)
-    val h = screenHeightDp() * 0.5f
+    val h = screenHeightDp() * 0.62f
     Box(
         Modifier.fillMaxWidth().padding(horizontal = LocalPad.current, vertical = 6.dp).height(h)
             .clip(RoundedCornerShape(12.dp)).background(bg)
@@ -459,15 +464,15 @@ private fun FireHero(m: AppModel, v: Vod, count: Int, index: Int, onStep: (Int) 
         }
         // Infos à gauche
         Column(
-            Modifier.align(Alignment.CenterStart).fillMaxWidth(0.46f).padding(start = 28.dp, end = 8.dp),
+            Modifier.align(Alignment.CenterStart).fillMaxWidth(0.48f).padding(start = 36.dp, end = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             androidx.compose.animation.AnimatedContent(targetState = v, label = "fireTxt", transitionSpec = {
                 androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(500)) togetherWith androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(250))
             }) { f ->
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(com.lumo.tv.data.Tmdb.cleanName(f.name).ifBlank { f.name }, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Black,
-                        lineHeight = 32.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(com.lumo.tv.data.Tmdb.cleanName(f.name).ifBlank { f.name }, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Black,
+                        lineHeight = 38.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     val inf = infos[f.id]
                     val meta = listOfNotNull(
                         inf?.year?.ifBlank { null } ?: com.lumo.tv.data.TmdbArt.split(f.name).second.ifBlank { null },
@@ -475,9 +480,9 @@ private fun FireHero(m: AppModel, v: Vod, count: Int, index: Int, onStep: (Int) 
                         inf?.genre?.ifBlank { null }?.split(",")?.firstOrNull()?.trim(),
                         f.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { "★ %.1f".format(it) }
                     ).joinToString(" · ")
-                    Text(meta, color = C.Sub, fontSize = 13.sp, maxLines = 1)
+                    Text(meta, color = C.Sub, fontSize = 14.sp, maxLines = 1)
                     plots[f.id]?.takeIf { it.isNotBlank() }?.let {
-                        Text(it, color = Color(0xFFD0D0D0), fontSize = 13.sp, lineHeight = 18.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(it, color = Color(0xFFD0D0D0), fontSize = 15.sp, lineHeight = 21.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
@@ -520,6 +525,20 @@ private fun ChannelCard(m: AppModel, c: com.lumo.tv.data.LiveStream, list: List<
             }
             Text(c.name, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(m.nowPlaying[c.id]?.ifBlank { null } ?: "En direct", color = C.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+
+/** Défilement minimal : on ne fait défiler que si l'élément sélectionné dépasse de l'écran. */
+private val MinimalBringIntoView = object : androidx.compose.foundation.gestures.BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        val trailing = offset + size
+        return when {
+            offset >= 0f && trailing <= containerSize -> 0f
+            offset < 0f && trailing > containerSize -> 0f
+            kotlin.math.abs(offset) < kotlin.math.abs(trailing - containerSize) -> offset
+            else -> trailing - containerSize
         }
     }
 }
