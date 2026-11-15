@@ -69,6 +69,7 @@ fun CoverFlow(
     paused: Boolean = false,
     target: Int = -1,
     targetKey: Int = 0,
+    reflection: Float = 0.3f,
     onOpen: (Int) -> Unit
 ) {
     if (items.isEmpty()) return
@@ -114,7 +115,7 @@ fun CoverFlow(
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(cardH * centerScale + cardH * 0.3f + 30.dp)
+                .height(cardH * centerScale + cardH * reflection + 30.dp)
                 .clipToBounds()
                 .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                 // Télécommande : ▼ depuis les affiches → bouton « Lecture » (au lieu de sauter à la rangée suivante)
@@ -203,7 +204,7 @@ fun CoverFlow(
                         }
                         // Reflet sous l'affiche
                         Box(
-                            Modifier.offset(y = cardH + 6.dp).fillMaxWidth().height(cardH * 0.3f).clipToBounds()
+                            Modifier.offset(y = cardH + 6.dp).fillMaxWidth().height(cardH * reflection).clipToBounds()
                         ) {
                             if (card != null) Box(Modifier.requiredSize(cardW, cardH).align(Alignment.TopCenter).graphicsLayer { scaleY = -1f; alpha = 0.35f }.clip(RoundedCornerShape(8.dp))) { card(item) }
                             else if (painter != null) androidx.compose.foundation.Image(

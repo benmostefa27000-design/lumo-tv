@@ -231,7 +231,7 @@ private fun HeroFlow(m: AppModel, films: List<Vod>) {
                     }
                 }
                 // Les boutons passent à la ligne s'il manque de place (ils restent toujours atteignables)
-                FlowRowCompat(spacing = 12.dp, center = center) {
+                FlowRowCompat(spacing = 10.dp, center = center) {
                     // TV : ◀ sur « Lecture » = film précédent
                     LumoButton("Lecture", requester = playFr, modifier = Modifier.onPreviewKeyEvent { e ->
                         if (m.isTv && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && e.key == androidx.compose.ui.input.key.Key.DirectionLeft) { step(-1); true } else false
@@ -249,17 +249,21 @@ private fun HeroFlow(m: AppModel, films: List<Vod>) {
         }
         if (wide) {
             // TV et téléphone à l'horizontale : affiches à gauche, titre/résumé/boutons à droite (tout tient à l'écran)
-            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(0.66f)) {
+            // Taille calculée pour que tout le haut tienne dans l'écran (sinon la page défile quand on va sur les boutons)
+            val sh = screenHeightDp()
+            val avail = sh - (if (m.isTv) 150.dp else 110.dp)
+            val cw = minOf(if (m.isTv) 150.dp else 105.dp, avail / (1.45f + 0.15f) / 1.5f - 20.dp)
+            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(0.6f)) {
                     CoverFlow(
                         title = null, items = flow, isTv = m.isTv, startIndex = cur,
-                        width = if (m.isTv) 150.dp else 105.dp,
+                        width = cw, reflection = 0.15f,
                         autoMs = 5000, showCaption = false, onCurrent = { cur = it }, centerScale = 1.45f,
                         // TV : la télécommande va directement sur les boutons (les affiches défilent toutes seules)
                         selectable = !m.isTv, paused = infoFocused, target = target, targetKey = targetKey
                     ) { i -> m.go(Screen.MovieDetail(films[i])) }
                 }
-                Box(Modifier.weight(0.34f).padding(end = LocalPad.current, start = 4.dp)) { Info(center = false) }
+                Box(Modifier.weight(0.4f).padding(end = LocalPad.current, start = 4.dp)) { Info(center = false) }
             }
         } else Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
             CoverFlow(
