@@ -24,6 +24,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -110,6 +111,16 @@ fun HomeScreen(m: AppModel) {
         }
     }
 
+    // Après « Retirer » (ou « Annuler ») dans Reprendre la lecture : on reste dans la rangée, sur l'affiche voisine
+    val progFr = remember(progress.size) { List(progress.size) { androidx.compose.ui.focus.FocusRequester() } }
+    var progAsk by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(m.removeAsk, progress.size) {
+        val i = progAsk ?: return@LaunchedEffect
+        if (m.removeAsk != null) return@LaunchedEffect
+        kotlinx.coroutines.delay(150)
+        progAsk = null
+        progFr.getOrNull(i.coerceAtMost(progFr.lastIndex))?.let { try { it.requestFocus() } catch (_: Exception) { } }
+    }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val listScope = rememberCoroutineScope()
     // TV : pas de « défilement pivot » automatique d'Android TV (la page ne bouge que si l'élément sélectionné sort de l'écran)
@@ -146,7 +157,9 @@ fun HomeScreen(m: AppModel) {
         }
         if (progress.isNotEmpty()) item {
             RowSection("Reprendre la lecture") {
-                items(progress, key = { it.key }) { p -> ProgressCard(m, p, cardW, vodsById, seriesById) }
+                itemsIndexed(progress, key = { _, it -> it.key }) { i, p ->
+                    ProgressCard(m, p, cardW, vodsById, seriesById, requester = progFr.getOrNull(i), onAskRemove = { progAsk = i })
+                }
             }
         }
         if (myChannels.isNotEmpty()) item(key = "mych") {
@@ -336,9 +349,10 @@ fun openItem(m: AppModel, obj: Any) {
 }
 
 @Composable
-private fun ProgressCard(m: AppModel, p: Progress, w: androidx.compose.ui.unit.Dp, vods: Map<String, Vod>, series: Map<String, Series>) {
+private fun ProgressCard(m: AppModel, p: Progress, w: androidx.compose.ui.unit.Dp, vods: Map<String, Vod>, series: Map<String, Series>,
+                         requester: androidx.compose.ui.focus.FocusRequester? = null, onAskRemove: () -> Unit = {}) {
     PosterCard(p.title, p.img, w, progress = p.fraction, badge = p.subtitle.ifBlank { null }, kind = if (p.kind == "vod") "movie" else "tv",
-        onLongClick = { m.askRemoveProgress(p) }) {
+        requester = requester, onLongClick = { onAskRemove(); m.askRemoveProgress(p) }) {
         if (p.kind == "vod") {
             val v = vods[p.itemId] ?: Vod(p.itemId, p.title, p.img, "", "", p.ext, 0)
             m.go(Screen.MovieDetail(v))

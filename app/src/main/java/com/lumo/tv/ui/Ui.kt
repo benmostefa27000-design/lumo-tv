@@ -159,6 +159,7 @@ fun PosterCard(
     badge: String? = null,
     onLongClick: (() -> Unit)? = null,
     kind: String? = null,
+    requester: FocusRequester? = null,
     onClick: () -> Unit
 ) {
     // Affiche TMDB (meilleure qualité) si la clé est réglée, sinon celle du fournisseur
@@ -166,7 +167,7 @@ fun PosterCard(
     val providerImg = image
     var tmdbFailed by remember(title) { mutableStateOf(false) }
     val image = (if (tmdbFailed) null else art?.poster?.ifBlank { null }) ?: image
-    FocusBox(modifier = Modifier.width(width).aspectRatio(2f / 3f), onLongClick = onLongClick, onClick = onClick) { _ ->
+    FocusBox(modifier = Modifier.width(width).aspectRatio(2f / 3f), onLongClick = onLongClick, requester = requester, onClick = onClick) { _ ->
         Box(Modifier.fillMaxSize().background(C.Card2)) {
             Text(
                 title,
