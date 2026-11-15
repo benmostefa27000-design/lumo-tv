@@ -135,16 +135,7 @@ fun CoverFlow(
             contentAlignment = Alignment.TopCenter
         ) {
             val p = pos.value
-            // « Pop » : quand l'affiche s'arrête au milieu, elle grandit ; dès que ça bouge, elle reprend sa taille
-            val settled = !pos.isRunning && abs(p - p.roundToInt()) < 0.02f
-            val pop by androidx.compose.animation.core.animateFloatAsState(
-                if (settled) 1f else 0f,
-                // Grandit en douceur (sans rebond), rétrécit un peu plus vite quand ça repart
-                if (settled) androidx.compose.animation.core.tween(850, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-                else androidx.compose.animation.core.tween(380, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                label = "pop"
-            )
-            val boost = 1f + (centerScale - 1f) * pop
+            // L'affiche grandit progressivement en s'approchant du milieu (et rétrécit en s'éloignant), comme un fondu
             val lo = max(0, floor(p - 5f).toInt())
             val hi = min(last, ceil(p + 5f).toInt())
             for (k in lo..hi) {
@@ -153,7 +144,10 @@ fun CoverFlow(
                 val a = abs(d)
                 val s = sign(d)
                 val near = min(a, 1f)
-                val x = s * (near * near1 * (1f + (boost - 1f) * 1.2f) + max(a - 1f, 0f) * far)
+                val x = s * (near * near1 * (1f + (centerScale - 1f) * 1.1f) + max(a - 1f, 0f) * far)
+                // 0 loin du milieu → 1 pile au milieu, avec une courbe douce
+                val t = (1f - near).coerceIn(0f, 1f)
+                val grow = 1f + (centerScale - 1f) * (t * t * (3f - 2f * t))
                 val isCenter = k == current
                 key(item.id) {
                     Box(
@@ -166,7 +160,7 @@ fun CoverFlow(
                                 rotationY = -s * near * 55f
                                 cameraDistance = 14f * density.density
                                 // L'affiche du milieu est plus grande (centerScale), les autres rétrécissent
-                                val sc = (1f - 0.14f * near) * (if (k == p.roundToInt()) boost else 1f)
+                                val sc = (1f - 0.14f * near) * grow
                                 scaleX = sc; scaleY = sc
                                 alpha = if (a > 4.6f) 0f else 1f
                             }
