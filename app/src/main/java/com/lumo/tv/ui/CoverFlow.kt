@@ -43,7 +43,7 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sign
 
-data class FlowItem(val id: String, val title: String, val image: String, val meta: String)
+data class FlowItem(val id: String, val title: String, val image: String, val meta: String, val kind: String? = null)
 
 /**
  * Défilement 3D des affiches (façon albums sur iPad) :
@@ -153,7 +153,8 @@ fun CoverFlow(
                         ) {
                             if (card != null) card(item) else {
                                 Text(item.title, color = C.Sub, fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.align(Alignment.Center).padding(10.dp))
-                                if (item.image.isNotBlank()) AsyncImage(model = item.image, contentDescription = item.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                val img = rememberTmdbArt(item.kind, item.title)?.poster?.ifBlank { null } ?: item.image
+                                if (img.isNotBlank()) AsyncImage(model = img, contentDescription = item.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                             }
                             // Assombrir les affiches sur les côtés
                             if (a > 0.05f) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = (min(a, 3f) * 0.16f))))
@@ -164,7 +165,7 @@ fun CoverFlow(
                         ) {
                             if (card != null) Box(Modifier.requiredSize(cardW, cardH).align(Alignment.TopCenter).graphicsLayer { scaleY = -1f; alpha = 0.35f }.clip(RoundedCornerShape(8.dp))) { card(item) }
                             else if (item.image.isNotBlank()) AsyncImage(
-                                model = item.image, contentDescription = null, contentScale = ContentScale.Crop,
+                                model = rememberTmdbArt(item.kind, item.title)?.poster?.ifBlank { null } ?: item.image, contentDescription = null, contentScale = ContentScale.Crop,
                                 modifier = Modifier.requiredSize(cardW, cardH).align(Alignment.TopCenter).graphicsLayer { scaleY = -1f; alpha = 0.35f }
                             )
                             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0x66000000), Color.Black))))

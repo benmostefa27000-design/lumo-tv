@@ -121,13 +121,7 @@ fun HomeScreen(m: AppModel) {
         }
         val myList = favVod.mapNotNull { vodsById[it] }.map { Triple(it.id, it.name, it.icon) to it } +
             favSer.mapNotNull { seriesById[it] }.map { Triple(it.id, it.name, it.cover) to it }
-        if (myList.isNotEmpty()) item {
-            RowSection("Ma liste") {
-                items(myList, key = { "fav" + it.first.first + it.second.javaClass.simpleName }) { (t, obj) ->
-                    PosterCard(t.second, t.third, cardW, kind = if (obj is Series) "tv" else "movie") { openItem(m, obj) }
-                }
-            }
-        }
+        if (myList.isNotEmpty()) item(key = "mylist") { FlowOrRow(m, "Ma liste", "fav", myList.map { it.second }, cardW) }
         val anim = run { m.store.version; m.store.anim3d }
         if (anim && recentVods.size >= 3) item(key = "flow") {
             val flow = remember(recentVods) {
@@ -135,33 +129,48 @@ fun HomeScreen(m: AppModel) {
                     FlowItem(v.id, v.name, v.icon, listOfNotNull("Film", v.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { "★ %.1f".format(it) }).joinToString(" · "))
                 }
             }
-            CoverFlow("Nouveautés", flow, m.isTv) { i -> m.go(Screen.MovieDetail(recentVods[i])) }
+            CoverFlow("Nouveautés", flow.map { it.copy(kind = "movie") }, m.isTv) { i -> m.go(Screen.MovieDetail(recentVods[i])) }
         }
         if (recentVods.isNotEmpty() && !anim) item {
             RowSection("Films ajoutés récemment") {
                 items(recentVods, key = { "rv" + it.id }) { v -> PosterCard(v.name, v.icon, cardW, kind = "movie") { m.go(Screen.MovieDetail(v)) } }
             }
         }
-        if (recentSeries.isNotEmpty()) item {
-            RowSection("Séries mises à jour") {
-                items(recentSeries, key = { "rs" + it.id }) { s -> PosterCard(s.name, s.cover, cardW, kind = "tv") { m.go(Screen.SeriesDetail(s)) } }
-            }
-        }
+        if (recentSeries.isNotEmpty()) item(key = "rser") { FlowOrRow(m, "Séries mises à jour", "rs", recentSeries.take(25), cardW) }
         val cats = m.visibleCats("vod").take(8)
         cats.forEach { c ->
             val list = byCat[c.id].orEmpty().take(40)
-            if (list.isNotEmpty()) item(key = "cat" + c.id) {
-                RowSection(c.name) {
-                    items(list, key = { "c${c.id}_" + it.id }) { v -> PosterCard(v.name, v.icon, cardW, kind = "movie") { m.go(Screen.MovieDetail(v)) } }
-                }
-            }
+            if (list.isNotEmpty()) item(key = "cat" + c.id) { FlowOrRow(m, c.name, "c${c.id}_", list, cardW) }
         }
         val scats = m.visibleCats("series").take(4)
         scats.forEach { c ->
             val list = serByCat[c.id].orEmpty().take(40)
-            if (list.isNotEmpty()) item(key = "scat" + c.id) {
-                RowSection(c.name) {
-                    items(list, key = { "s${c.id}_" + it.id }) { s -> PosterCard(s.name, s.cover, cardW, kind = "tv") { m.go(Screen.SeriesDetail(s)) } }
+            if (list.isNotEmpty()) item(key = "scat" + c.id) { FlowOrRow(m, c.name, "s${c.id}_", list, cardW) }
+        }
+    }
+}
+
+/** Rangée d'affiches en défilement 3D (effet iPad) quand les animations sont activées, sinon rangée classique. */
+@Composable
+private fun FlowOrRow(m: AppModel, title: String, keyPrefix: String, objs: List<Any>, cardW: androidx.compose.ui.unit.Dp) {
+    val anim = run { m.store.version; m.store.anim3d }
+    if (anim && objs.size >= 3) {
+        val flow = remember(objs) {
+            objs.map { o ->
+                when (o) {
+                    is Vod -> FlowItem(o.id, o.name, o.icon, listOfNotNull("Film", o.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { "★ %.1f".format(it) }).joinToString(" · "), "movie")
+                    is Series -> FlowItem(o.id, o.name, o.cover, "Série", "tv")
+                    else -> FlowItem("", "", "", "")
+                }
+            }
+        }
+        CoverFlow(title, flow, m.isTv, startIndex = 1) { i -> openItem(m, objs[i]) }
+    } else {
+        RowSection(title) {
+            items(objs.size, key = { i -> keyPrefix + i }) { i ->
+                when (val o = objs[i]) {
+                    is Vod -> PosterCard(o.name, o.icon, cardW, kind = "movie") { m.go(Screen.MovieDetail(o)) }
+                    is Series -> PosterCard(o.name, o.cover, cardW, kind = "tv") { m.go(Screen.SeriesDetail(o)) }
                 }
             }
         }
