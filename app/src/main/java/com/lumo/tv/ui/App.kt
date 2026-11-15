@@ -223,10 +223,18 @@ private fun TvTopBar(m: AppModel) {
         Spacer(Modifier.width(18.dp))
         val fr = rememberAutoFocus(true)
         listOf(Tab.Home, Tab.Live, Tab.Movies, Tab.Series, Tab.MyList).forEach { t ->
-            FocusBox(shape = RoundedCornerShape(14.dp), scale = 1.08f, requester = if (t == m.tab) fr else null, onClick = { m.tab = t }) { f ->
-                // Changement d'onglet juste en passant dessus avec les flèches (pas besoin de OK)
-                LaunchedEffect(f) { if (f && m.tab != t) { kotlinx.coroutines.delay(220); m.tab = t } }
-                TabChip(t, selected = m.tab == t, focused = f)
+            var tf by remember { mutableStateOf(false) }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // Seule l'icône s'allume (sans cadre blanc) ; le nom s'affiche dessous, sans encadrement
+                FocusBox(shape = RoundedCornerShape(12.dp), scale = 1.06f, border = false, requester = if (t == m.tab) fr else null, onClick = { m.tab = t }) { f ->
+                    // Changement d'onglet juste en passant dessus avec les flèches (pas besoin de OK)
+                    LaunchedEffect(f) { tf = f; if (f && m.tab != t) { kotlinx.coroutines.delay(220); m.tab = t } }
+                    TabChip(t, selected = m.tab == t, focused = f)
+                }
+                Box(Modifier.height(20.dp).padding(top = 3.dp), contentAlignment = Alignment.Center) {
+                    if (tf) Text(if (t == Tab.Live) "Direct" else t.label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    else if (m.tab == t) Box(Modifier.size(width = 12.dp, height = 2.dp).background(C.Red, RoundedCornerShape(1.dp)))
+                }
             }
         }
         Spacer(Modifier.weight(1f))
@@ -320,26 +328,20 @@ private fun ProfileBadge(m: AppModel, onClick: () -> Unit) {
 /** Onglet en icône seule ; quand il a le focus : carré arrondi clair + nom en dessous (style Google TV). */
 @Composable
 private fun TabChip(t: Tab, selected: Boolean, focused: Boolean, small: Boolean = false) {
-    val box = if (small) 40.dp else 54.dp
-    val bg = when { focused -> Color(0xFFE8E6FF); selected -> Color(0x26FFFFFF); else -> Color.Transparent }
-    val fg = when { focused -> Color(0xFF15131F); selected -> Color.White; else -> Color(0xFFCFCFD6) }
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            Modifier.size(box).background(bg, RoundedCornerShape(if (small) 10.dp else 14.dp)).semantics { contentDescription = t.label },
-            contentAlignment = Alignment.Center
-        ) {
-            androidx.compose.foundation.Canvas(Modifier.size(box * 0.56f)) { drawTab(t, fg) }
-        }
-        if (!small) Box(Modifier.height(22.dp), contentAlignment = Alignment.Center) {
-            if (focused) Text(if (t == Tab.Live) "Direct" else t.label, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            else if (selected) Box(Modifier.size(width = 14.dp, height = 3.dp).background(C.Red, RoundedCornerShape(2.dp)))
-        }
+    val box = if (small) 38.dp else 46.dp
+    val bg = when { focused -> Color(0xF2FFFFFF); selected -> Color(0x1AFFFFFF); else -> Color.Transparent }
+    val fg = when { focused -> Color(0xFF111111); selected -> Color.White; else -> Color(0xFFB8B8C0) }
+    Box(
+        Modifier.size(box).background(bg, RoundedCornerShape(if (small) 10.dp else 12.dp)).semantics { contentDescription = t.label },
+        contentAlignment = Alignment.Center
+    ) {
+        androidx.compose.foundation.Canvas(Modifier.size(box * 0.5f)) { drawTab(t, fg) }
     }
 }
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawTab(t: Tab, c: Color) {
     val w = size.width; val h = size.height
-    val sw = w * 0.1f
+    val sw = w * 0.07f
     val st = androidx.compose.ui.graphics.drawscope.Stroke(sw, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round)
     fun o(x: Float, y: Float) = androidx.compose.ui.geometry.Offset(w * x, h * y)
     fun line(x1: Float, y1: Float, x2: Float, y2: Float) = drawLine(c, o(x1, y1), o(x2, y2), strokeWidth = sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)

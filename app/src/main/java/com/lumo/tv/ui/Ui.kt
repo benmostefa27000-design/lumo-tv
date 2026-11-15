@@ -65,6 +65,7 @@ fun FocusBox(
     scale: Float = 1.06f,
     onLongClick: (() -> Unit)? = null,
     requester: FocusRequester? = null,
+    border: Boolean = true,
     onClick: () -> Unit,
     content: @Composable BoxScope.(focused: Boolean) -> Unit
 ) {
@@ -77,7 +78,7 @@ fun FocusBox(
             .then(if (requester != null) Modifier.focusRequester(requester) else Modifier)
             .clip(shape)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .then(if (focused) Modifier.border(3.dp, Color.White, shape) else Modifier)
+            .then(if (focused && border) Modifier.border(3.dp, Color.White, shape) else Modifier)
     ) {
         content(focused)
     }
