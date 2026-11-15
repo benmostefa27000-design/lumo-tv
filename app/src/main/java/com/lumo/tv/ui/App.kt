@@ -131,14 +131,8 @@ private fun TvTopBar(m: AppModel) {
         Spacer(Modifier.width(18.dp))
         val fr = rememberAutoFocus(true)
         listOf(Tab.Home, Tab.Live, Tab.Movies, Tab.Series, Tab.MyList).forEach { t ->
-            FocusBox(shape = RoundedCornerShape(6.dp), scale = 1.05f, requester = if (t == m.tab) fr else null, onClick = { m.tab = t }) { f ->
-                Text(
-                    t.label,
-                    color = if (m.tab == t || f) Color.White else C.Sub,
-                    fontWeight = if (m.tab == t) FontWeight.Bold else FontWeight.Normal,
-                    fontSize = 16.sp,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                )
+            FocusBox(shape = RoundedCornerShape(50), scale = 1.06f, requester = if (t == m.tab) fr else null, onClick = { m.tab = t }) { f ->
+                TabChip(t, selected = m.tab == t, focused = f)
             }
         }
         Spacer(Modifier.weight(1f))
@@ -158,12 +152,8 @@ private fun PhoneLandscapeTopBar(m: AppModel) {
         LumoLogo(24)
         Spacer(Modifier.width(14.dp))
         listOf(Tab.Home, Tab.Live, Tab.Movies, Tab.Series, Tab.MyList).forEach { t ->
-            FocusBox(shape = RoundedCornerShape(6.dp), scale = 1.03f, onClick = { m.tab = t }) { _ ->
-                Text(
-                    t.label, color = if (m.tab == t) Color.White else C.Sub,
-                    fontWeight = if (m.tab == t) FontWeight.Bold else FontWeight.Normal, fontSize = 15.sp,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
-                )
+            FocusBox(shape = RoundedCornerShape(50), scale = 1.03f, onClick = { m.tab = t }) { f ->
+                TabChip(t, selected = m.tab == t, focused = f, small = true)
             }
         }
         Spacer(Modifier.weight(1f))
@@ -229,5 +219,30 @@ private fun ProfileBadge(m: AppModel, onClick: () -> Unit) {
     val p = m.profile ?: return
     FocusBox(shape = androidx.compose.foundation.shape.CircleShape, scale = 1.1f, onClick = onClick) { _ ->
         ProfileAvatar(p.name, p.color, p.photo, 34.dp)
+    }
+}
+
+
+private fun tabIcon(t: Tab) = when (t) {
+    Tab.Home -> Icons.Default.Home
+    Tab.Live -> Icons.Default.PlayArrow
+    Tab.Movies -> Icons.Default.Star
+    Tab.Series -> Icons.Default.List
+    Tab.MyList -> Icons.Default.Favorite
+    Tab.Settings -> Icons.Default.Settings
+}
+
+/** Onglet avec icône + nom (en pastille quand il est choisi). */
+@Composable
+private fun TabChip(t: Tab, selected: Boolean, focused: Boolean, small: Boolean = false) {
+    val bg = when { focused -> Color.White; selected -> Color(0x33FFFFFF); else -> Color.Transparent }
+    val fg = when { focused -> Color.Black; selected -> Color.White; else -> C.Sub }
+    Row(
+        Modifier.background(bg, RoundedCornerShape(50)).padding(horizontal = if (small) 10.dp else 14.dp, vertical = if (small) 6.dp else 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Icon(tabIcon(t), null, tint = fg, modifier = Modifier.size(if (small) 18.dp else 22.dp))
+        Text(if (t == Tab.Live) "Direct" else t.label, color = fg, fontWeight = if (selected || focused) FontWeight.Bold else FontWeight.Normal, fontSize = if (small) 14.sp else 16.sp)
     }
 }
