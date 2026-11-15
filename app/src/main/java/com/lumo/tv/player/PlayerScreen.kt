@@ -221,7 +221,11 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     val menuFr = remember { androidx.compose.ui.focus.FocusRequester() }
     LaunchedEffect(chanList) { if (chanList && m.isTv) { delay(200); try { chanFr.requestFocus() } catch (_: Exception) { } } }
     LaunchedEffect(subsPanel) { if (subsPanel && m.isTv) { delay(200); try { subsFr.requestFocus() } catch (_: Exception) { } } }
-    LaunchedEffect(tvMenu) { if (tvMenu) { delay(150); try { menuFr.requestFocus() } catch (_: Exception) { } } }
+    LaunchedEffect(tvMenu, subsPanel, chanList) { if (tvMenu && !subsPanel && !chanList) { delay(150); try { menuFr.requestFocus() } catch (_: Exception) { } } }
+    // TV : quand tout est fermé (menu d'icônes, sous-titres/audio, chaînes), la télécommande revient sur la vidéo
+    LaunchedEffect(tvMenu, subsPanel, chanList) {
+        if (m.isTv && !tvMenu && !subsPanel && !chanList) { delay(120); try { rootFr.requestFocus() } catch (_: Exception) { } }
+    }
     var autoNextAt by remember { mutableLongStateOf(0L) }
     var tracksTick by remember { mutableIntStateOf(0) }
     var brightShown by remember { mutableFloatStateOf(-1f) }
@@ -962,6 +966,12 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             val live = item as? Playable.Live
             Row(
                 Modifier.align(Alignment.BottomEnd).padding(bottom = 28.dp, end = 32.dp)
+                    // ▲ ▼ ferment les icônes (au lieu de perdre la sélection)
+                    .onPreviewKeyEvent { e ->
+                        val c = e.nativeKeyEvent.keyCode
+                        if ((c == KeyEvent.KEYCODE_DPAD_UP || c == KeyEvent.KEYCODE_DPAD_DOWN) && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) { tvMenu = false; true }
+                        else false
+                    }
                     .background(Color(0xE6141414), RoundedCornerShape(16.dp)).padding(horizontal = 18.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(18.dp)
             ) {
@@ -978,11 +988,11 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     if (ep.index > 0) entry("Épisode préc.", onClick = { epStep(-1); tvMenu = false }) { drawArrow(-1) }
                     if (ep.index < ep.episodes.lastIndex) entry("Épisode suiv.", onClick = { epStep(1); tvMenu = false }) { drawArrow(1) }
                 }
-                entry("Langue audio", onClick = { pickAudio = true; subsPanel = true }) { drawAudioLang() }
-                if (live == null) entry("Sous-titres", onClick = { pickAudio = false; subsPanel = true }) { drawSubtitles() }
+                entry("Langue audio", onClick = { pickAudio = true; tvMenu = false; subsPanel = true }) { drawAudioLang() }
+                if (live == null) entry("Sous-titres", onClick = { pickAudio = false; tvMenu = false; subsPanel = true }) { drawSubtitles() }
                 entry(modeNames[videoMode], active = videoMode != 0, onClick = { nextVideoMode() }) { drawAspect() }
-                entry("Synchro son", active = avDelay != 0, onClick = { panel = true }) { drawSync() }
-                if (live != null && live.list.size > 1) entry("Chaînes", onClick = { chanList = true }) { drawChannels() }
+                entry("Synchro son", active = avDelay != 0, onClick = { tvMenu = false; panel = true }) { drawSync() }
+                if (live != null && live.list.size > 1) entry("Chaînes", onClick = { tvMenu = false; chanList = true }) { drawChannels() }
             }
         }
 
