@@ -113,12 +113,15 @@ fun HomeScreen(m: AppModel) {
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val listScope = rememberCoroutineScope()
     // TV : pas de « défilement pivot » automatique d'Android TV (la page ne bouge que si l'élément sélectionné sort de l'écran)
-    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides MinimalBringIntoView) {
+    // TV : le bandeau du haut ne bouge pas ; une rangée sélectionnée vient se placer au milieu de l'écran
+    val heroFocusNow = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    val spec = remember { centeredSpec { heroFocusNow.get() } }
+    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides (if (m.isTv) spec else MinimalBringIntoView)) {
     LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 32.dp)) {
         // Haut de l'accueil classique : grande affiche du film en fondu enchaîné (retour à la version d'avant l'effet iPad)
         // TV : bandeau façon Fire TV (image à droite, texte et boutons à gauche)
         if (hero != null && m.isTv) item(key = "firehero") {
-            Box(Modifier.onFocusChanged { heroFocused = it.hasFocus; if (it.hasFocus) listScope.launch { listState.animateScrollToItem(0) } }) {
+            Box(Modifier.onFocusChanged { heroFocused = it.hasFocus; heroFocusNow.set(it.hasFocus); if (it.hasFocus) listScope.launch { listState.animateScrollToItem(0) } }) {
                 FireHero(m, hero, heroOk.size, heroIdx % heroOk.size.coerceAtLeast(1),
                     onStep = { d -> heroIdx = ((heroIdx + d) % heroOk.size + heroOk.size) % heroOk.size },
                     onNoImage = { if (hero.id !in badHero) badHero.add(hero.id) })
@@ -541,4 +544,10 @@ private val MinimalBringIntoView = object : androidx.compose.foundation.gestures
             else -> trailing - containerSize
         }
     }
+}
+
+/** Rangée sélectionnée au milieu de l'écran ; rien ne bouge tant qu'on est dans le bandeau du haut. */
+private fun centeredSpec(inHero: () -> Boolean) = object : androidx.compose.foundation.gestures.BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
+        if (inHero()) 0f else offset + size / 2f - containerSize * 0.55f
 }
