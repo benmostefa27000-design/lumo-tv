@@ -164,7 +164,10 @@ fun HomeScreen(m: AppModel) {
                     FlowItem(v.id, v.name, v.icon, listOfNotNull("Film", v.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { "★ %.1f".format(it) }).joinToString(" · "))
                 }
             }
-            CoverFlow("Nouveautés", flow.map { it.copy(kind = "movie") }, m.isTv) { i -> m.go(Screen.MovieDetail(recentVods[i])) }
+            // TV : sans le titre/points sous les affiches (ils se mélangeaient avec la rangée suivante)
+            Column(Modifier.padding(bottom = if (m.isTv) 16.dp else 0.dp)) {
+                CoverFlow("Nouveautés", flow.map { it.copy(kind = "movie") }, m.isTv, showCaption = !m.isTv) { i -> m.go(Screen.MovieDetail(recentVods[i])) }
+            }
         }
         if (recentVods.isNotEmpty() && !anim) item {
             RowSection("Films ajoutés récemment") {
@@ -172,14 +175,15 @@ fun HomeScreen(m: AppModel) {
             }
         }
         if (recentSeries.isNotEmpty()) item(key = "rser") { FlowOrRow(m, "Séries mises à jour", "rs", recentSeries.take(25), cardW) }
-        val cats = m.visibleCats("vod").take(8)
+        // Accueil allégé : 2 catégories de films et 1 de séries (tout le reste est dans les onglets Films / Séries)
+        val cats = m.visibleCats("vod").take(2)
         cats.forEach { c ->
-            val list = byCat[c.id].orEmpty().take(40)
+            val list = byCat[c.id].orEmpty().take(25)
             if (list.isNotEmpty()) item(key = "cat" + c.id) { FlowOrRow(m, c.name, "c${c.id}_", list, cardW) }
         }
-        val scats = m.visibleCats("series").take(4)
+        val scats = m.visibleCats("series").take(1)
         scats.forEach { c ->
-            val list = serByCat[c.id].orEmpty().take(40)
+            val list = serByCat[c.id].orEmpty().take(25)
             if (list.isNotEmpty()) item(key = "scat" + c.id) { FlowOrRow(m, c.name, "s${c.id}_", list, cardW) }
         }
     }
