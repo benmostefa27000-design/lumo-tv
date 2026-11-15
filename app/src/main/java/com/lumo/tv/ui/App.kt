@@ -253,8 +253,8 @@ private fun TvTopBar(m: AppModel) {
                     LaunchedEffect(f) { tf = f; if (f && m.tab != t) { kotlinx.coroutines.delay(220); m.tab = t } }
                     TabChip(t, selected = m.tab == t, focused = f, small = true)
                 }
-                Box(Modifier.height(14.dp).padding(top = 1.dp), contentAlignment = Alignment.Center) {
-                    if (tf) Text(if (t == Tab.Live) "Direct" else t.label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                Box(Modifier.height(18.dp), contentAlignment = Alignment.Center) {
+                    if (tf) Text(if (t == Tab.Live) "Direct" else t.label, color = Color.White, fontSize = 11.sp, lineHeight = 14.sp, maxLines = 1, softWrap = false, fontWeight = FontWeight.Medium)
                     else if (m.tab == t) Box(Modifier.size(width = 12.dp, height = 2.dp).background(C.Red, RoundedCornerShape(1.dp)))
                 }
             }
