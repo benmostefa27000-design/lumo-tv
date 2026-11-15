@@ -197,7 +197,7 @@ private fun HeroFlow(m: AppModel, films: List<Vod>) {
             CoverFlow(
                 title = null, items = flow, isTv = m.isTv, startIndex = cur,
                 width = if (m.isTv) 190.dp else if (land) 120.dp else 165.dp,
-                autoMs = 5000, showCaption = false, onCurrent = { cur = it }, centerScale = 1.2f
+                autoMs = 5000, showCaption = false, onCurrent = { cur = it }, centerScale = if (m.isTv) 1.35f else if (land) 1.25f else 1.5f
             ) { i -> m.go(Screen.MovieDetail(films[i])) }
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = LocalPad.current),
