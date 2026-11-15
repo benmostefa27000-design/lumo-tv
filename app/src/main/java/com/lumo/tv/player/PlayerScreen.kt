@@ -587,12 +587,15 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             }
             KeyEvent.KEYCODE_MEDIA_PLAY -> { player.play(); poke(); true }
             KeyEvent.KEYCODE_MEDIA_PAUSE -> { player.pause(); poke(); true }
-            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP -> { if (!(live && zap(-1))) poke(); true }
-            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN -> { if (!(live && zap(1))) poke(); true }
+            // ▲▼ : ouvre les icônes (chaînes, son, image…) ; touches CH+/CH- : chaîne suivante/précédente
+            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> { poke(); tvMenu = true; true }
+            KeyEvent.KEYCODE_CHANNEL_UP -> { if (!(live && zap(-1))) poke(); true }
+            KeyEvent.KEYCODE_CHANNEL_DOWN -> { if (!(live && zap(1))) poke(); true }
             KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_PAGE_DOWN -> { if (!epStep(1)) poke(); true }
             KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_PAGE_UP -> { if (!epStep(-1)) poke(); true }
-            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> { if (!live) seekBy(-10_000) else poke(); true }
-            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { if (!live) seekBy(30_000) else poke(); true }
+            // ◀▶ : en direct, chaîne précédente/suivante ; en film/série, recul/avance
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> { if (live) { if (!zap(-1)) poke() } else seekBy(-10_000); true }
+            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { if (live) { if (!zap(1)) poke() } else seekBy(30_000); true }
             KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_SETTINGS, KeyEvent.KEYCODE_INFO -> { tvMenu = true; true }
             else -> false
         }
@@ -683,19 +686,6 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     val sub = if (item is Playable.Live && cur != null) "En direct · ${cur.title}" else r.subtitle
                     if (sub.isNotBlank()) Text(sub, color = C.Sub, fontSize = 14.sp, maxLines = 2, lineHeight = 17.sp, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
-                if (m.isTv && !tvMenu) {
-                    // TV : les mêmes icônes que sur le téléphone ; Menu (ou OK long) pour les utiliser
-                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            if (item is Playable.Ep) { StaticPill { drawArrow(-1) }; StaticPill { drawArrow(1) } }
-                            if (item !is Playable.Live) StaticPill { drawSubtitles() }
-                            StaticPill(active = videoMode != 0) { drawAspect() }
-                            StaticPill(active = avDelay != 0) { drawSync() }
-                            if (item is Playable.Live && (item as Playable.Live).list.size > 1) StaticPill { drawChannels() }
-                        }
-                        Text("Menu ou OK long : options" + if (item is Playable.Live) " · ▲▼ : chaînes" else " · ◀▶ : −10 s / +30 s", color = C.Dim, fontSize = 12.sp)
-                    }
-                }
                 // Téléphone : boutons ronds avec icônes (Chaînes tout à droite)
                 if (!m.isTv) {
                     if (item !is Playable.Live) IconPill("Sous-titres", onClick = { subsPanel = !subsPanel }) { drawSubtitles() }
@@ -731,7 +721,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             }
         }
 
-        if (!m.pip && item is Playable.Live && m.isTv && (uiVisible || banner != null)) {
+        if (!m.pip && item is Playable.Live && m.isTv && !tvMenu && (uiVisible || banner != null)) {
             Column(
                 Modifier.align(Alignment.BottomStart).padding(start = 24.dp, end = 24.dp, bottom = 28.dp)
                     .widthIn(max = 640.dp).fillMaxWidth()
@@ -939,7 +929,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             val ep = item as? Playable.Ep
             val live = item as? Playable.Live
             Row(
-                Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 16.dp)
+                Modifier.align(Alignment.BottomEnd).padding(bottom = 28.dp, end = 32.dp)
                     .background(Color(0xE6141414), RoundedCornerShape(16.dp)).padding(horizontal = 18.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(18.dp)
             ) {
