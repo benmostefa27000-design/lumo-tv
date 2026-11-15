@@ -25,6 +25,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.composed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -1096,7 +1097,7 @@ private fun Modifier.tvClickable(onClick: () -> Unit): Modifier = composed {
 
 /** Voile sombre derrière un panneau : se ferme au toucher, sans prendre le focus de la télécommande. */
 private fun Modifier.tapToClose(onClose: () -> Unit): Modifier =
-    this.pointerInput(Unit) { androidx.compose.foundation.gestures.detectTapGestures { onClose() } }
+    this.pointerInput(Unit) { detectTapGestures { onClose() } }
 
 /** Flèche gauche (-1) ou droite (1). */
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawArrow(dir: Int) {
