@@ -256,3 +256,13 @@ fun ProfileAvatar(name: String, color: Long, photo: String, size: Dp, modifier: 
         else Text(name.take(1).uppercase(), color = Color.White, fontSize = (size.value * 0.42f).sp, fontWeight = FontWeight.Bold)
     }
 }
+
+
+/** Téléphone tenu à l'horizontale. */
+@Composable
+fun isPhoneLandscape(isTv: Boolean): Boolean =
+    !isTv && androidx.compose.ui.platform.LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+/** Hauteur de l'écran en dp. */
+@Composable
+fun screenHeightDp(): Dp = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp

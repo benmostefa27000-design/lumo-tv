@@ -122,7 +122,7 @@ fun MovieDetailScreen(m: AppModel, v: Vod) {
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = pad, vertical = if (m.isTv) 56.dp else 24.dp).widthIn(max = 700.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            if (!m.isTv) Spacer(Modifier.height(140.dp))
+            if (!m.isTv) Spacer(Modifier.height(if (isPhoneLandscape(m.isTv)) 24.dp else 140.dp))
             Text(v.name, color = Color.White, fontSize = if (m.isTv) 48.sp else 32.sp, fontWeight = FontWeight.Black, lineHeight = if (m.isTv) 50.sp else 34.sp)
             val meta = listOfNotNull(
                 (info?.rating?.ifBlank { null } ?: v.rating.ifBlank { null })?.toDoubleOrNull()?.takeIf { it > 0 }?.let { "★ %.1f".format(it) },
@@ -178,7 +178,7 @@ fun SeriesDetailScreen(m: AppModel, s: Series) {
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item {
-            Box(Modifier.fillMaxWidth().height(if (m.isTv) 380.dp else 300.dp)) {
+            Box(Modifier.fillMaxWidth().height(if (m.isTv) 380.dp else if (isPhoneLandscape(m.isTv)) screenHeightDp() * 0.6f else 300.dp)) {
                 val img = tart?.backdrop?.ifBlank { null } ?: i?.backdrop?.ifBlank { null } ?: s.cover
                 if (img.isNotBlank()) AsyncImage(model = img, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                 Box(Modifier.fillMaxSize().background(leftFade()))

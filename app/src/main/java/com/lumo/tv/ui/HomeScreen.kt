@@ -182,7 +182,9 @@ private fun Hero(m: AppModel, v: Vod, onNoImage: () -> Unit = {}) {
         info = withContext(Dispatchers.IO) { try { m.client?.vodInfo(v.id) } catch (_: Exception) { null } }
         infoDone = true
     }
-    val h = if (m.isTv) 400.dp else 420.dp
+    val land = isPhoneLandscape(m.isTv)
+    val sh = screenHeightDp()
+    val h = if (m.isTv) 400.dp else if (land) sh * 0.68f else 420.dp
     val anim = m.store.anim3d
     val kb = if (anim) {
         val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "heroZoom")

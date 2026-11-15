@@ -88,6 +88,12 @@ fun MainScreen(m: AppModel) {
             TvTopBar(m)
             Box(Modifier.weight(1f)) { TabContent(m) }
         }
+    } else if (isPhoneLandscape(false)) {
+        // Téléphone à l'horizontale : onglets en haut (comme sur la TV), pas de barre en bas
+        Column(Modifier.fillMaxSize()) {
+            PhoneLandscapeTopBar(m)
+            Box(Modifier.weight(1f)) { TabContent(m) }
+        }
     } else {
         Column(Modifier.fillMaxSize()) {
             PhoneTopBar(m)
@@ -132,6 +138,31 @@ private fun TvTopBar(m: AppModel) {
                     fontWeight = if (m.tab == t) FontWeight.Bold else FontWeight.Normal,
                     fontSize = 16.sp,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                )
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        IconFocus(Icons.Default.Search, "Rechercher") { m.go(Screen.Search) }
+        IconFocus(Icons.Default.Settings, "Réglages") { m.tab = Tab.Settings }
+        ProfileBadge(m) { m.openProfiles() }
+    }
+}
+
+@Composable
+private fun PhoneLandscapeTopBar(m: AppModel) {
+    Row(
+        Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 6.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        LumoLogo(24)
+        Spacer(Modifier.width(14.dp))
+        listOf(Tab.Home, Tab.Live, Tab.Movies, Tab.Series, Tab.MyList).forEach { t ->
+            FocusBox(shape = RoundedCornerShape(6.dp), scale = 1.03f, onClick = { m.tab = t }) { _ ->
+                Text(
+                    t.label, color = if (m.tab == t) Color.White else C.Sub,
+                    fontWeight = if (m.tab == t) FontWeight.Bold else FontWeight.Normal, fontSize = 15.sp,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
                 )
             }
         }
