@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -63,6 +64,7 @@ fun CoverFlow(
     showCaption: Boolean = true,
     onCurrent: ((Int) -> Unit)? = null,
     centerScale: Float = 1f,
+    downTo: androidx.compose.ui.focus.FocusRequester? = null,
     onOpen: (Int) -> Unit
 ) {
     if (items.isEmpty()) return
@@ -109,6 +111,8 @@ fun CoverFlow(
                 .height(cardH * centerScale + cardH * 0.3f + 30.dp)
                 .clipToBounds()
                 .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+                // Télécommande : ▼ depuis les affiches → bouton « Lecture » (au lieu de sauter à la rangée suivante)
+                .then(if (downTo != null) Modifier.focusProperties { down = downTo } else Modifier)
                 .onFocusChanged { focused = it.hasFocus || it.isFocused }
                 .onKeyEvent { e ->
                     if (e.type != KeyEventType.KeyDown) return@onKeyEvent false

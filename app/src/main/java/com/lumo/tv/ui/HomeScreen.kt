@@ -198,6 +198,7 @@ private fun HeroFlow(m: AppModel, films: List<Vod>) {
         }
         val wide = m.isTv || land
         // Titre + résumé + boutons du film du milieu
+        val playFr = remember { androidx.compose.ui.focus.FocusRequester() }
         @Composable fun Info(center: Boolean) {
             Column(
                 horizontalAlignment = if (center) Alignment.CenterHorizontally else Alignment.Start,
@@ -208,20 +209,21 @@ private fun HeroFlow(m: AppModel, films: List<Vod>) {
                 }) { f ->
                     val ta = if (center) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start
                     Column(horizontalAlignment = if (center) Alignment.CenterHorizontally else Alignment.Start) {
-                        Text(f.name, color = Color.White, fontSize = if (m.isTv) 30.sp else 24.sp, fontWeight = FontWeight.Black, maxLines = 2, lineHeight = if (m.isTv) 34.sp else 28.sp, overflow = TextOverflow.Ellipsis, textAlign = ta)
+                        Text(f.name, color = Color.White, fontSize = if (wide) 22.sp else 24.sp, fontWeight = FontWeight.Black, maxLines = 2, lineHeight = if (wide) 26.sp else 28.sp, overflow = TextOverflow.Ellipsis, textAlign = ta)
                         f.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { Text("Film · ★ %.1f".format(it), color = C.Sub, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
                         // Résumé du film du milieu
                         plots[f.id]?.takeIf { it.isNotBlank() }?.let {
                             Text(
-                                it, color = Color(0xFFD0D0D0), fontSize = if (m.isTv) 15.sp else 13.sp, lineHeight = if (m.isTv) 21.sp else 18.sp,
-                                maxLines = if (wide) 5 else 3, overflow = TextOverflow.Ellipsis, textAlign = ta,
+                                it, color = Color(0xFFD0D0D0), fontSize = 13.sp, lineHeight = 18.sp,
+                                maxLines = if (wide) 4 else 3, overflow = TextOverflow.Ellipsis, textAlign = ta,
                                 modifier = Modifier.widthIn(max = 640.dp).padding(top = 8.dp)
                             )
                         }
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 4.dp)) {
-                    LumoButton("Lecture", icon = { Icon(Icons.Default.PlayArrow, null, tint = Color.Black) }) {
+                // Les boutons passent à la ligne s'il manque de place (ils restent toujours atteignables)
+                FlowRowCompat(spacing = 12.dp, center = center) {
+                    LumoButton("Lecture", requester = playFr, icon = { Icon(Icons.Default.PlayArrow, null, tint = Color.Black) }) {
                         m.go(Screen.Player(com.lumo.tv.Playable.Movie(v)))
                     }
                     LumoButton("Plus d'infos", primary = false, icon = { Icon(Icons.Default.Info, null, tint = Color.White) }) {
@@ -233,14 +235,15 @@ private fun HeroFlow(m: AppModel, films: List<Vod>) {
         if (wide) {
             // TV et téléphone à l'horizontale : affiches à gauche, titre/résumé/boutons à droite (tout tient à l'écran)
             Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(0.56f)) {
+                Box(Modifier.weight(0.66f)) {
                     CoverFlow(
                         title = null, items = flow, isTv = m.isTv, startIndex = cur,
-                        width = if (m.isTv) 135.dp else 100.dp,
-                        autoMs = 5000, showCaption = false, onCurrent = { cur = it }, centerScale = 1.3f
+                        width = if (m.isTv) 150.dp else 105.dp,
+                        autoMs = 5000, showCaption = false, onCurrent = { cur = it }, centerScale = 1.45f,
+                        downTo = if (m.isTv) playFr else null
                     ) { i -> m.go(Screen.MovieDetail(films[i])) }
                 }
-                Box(Modifier.weight(0.44f).padding(end = LocalPad.current, start = 8.dp)) { Info(center = false) }
+                Box(Modifier.weight(0.34f).padding(end = LocalPad.current, start = 4.dp)) { Info(center = false) }
             }
         } else Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
             CoverFlow(
