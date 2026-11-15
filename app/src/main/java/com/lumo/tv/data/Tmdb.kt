@@ -20,6 +20,9 @@ object Tmdb {
         .replace(Regex("""^\s*[A-Za-z]{2,4}\s*[-|:]\s*"""), "")
         .replace(Regex("""\(\d{4}\)"""), "")
         .replace(Regex("""(?i)\b(4k|fhd|uhd|hd|vf|vostfr|multi)\b"""), "")
+        // Arabe : « مسلسل » (série), « فيلم » (film), « برنامج » (émission) devant le titre
+        .replace(Regex("""^\s*(مسلسل|فيلم|برنامج|المسلسل|الفيلم)\s+"""), "")
+        .replace(Regex("""\s*(مدبلج|مترجم)\s*$"""), "")
         .trim()
 
     private fun get(http: OkHttpClient, url: String): JSONObject? =
@@ -81,7 +84,37 @@ object TmdbArt {
     }
 
     private fun norm(s: String) = java.text.Normalizer.normalize(s.lowercase(), java.text.Normalizer.Form.NFD)
-        .replace(Regex("\\p{Mn}+"), "").replace(Regex("[^a-z0-9]"), "")
+        .replace(Regex("\\p{Mn}+"), "")
+        .replace(Regex("[أإآ]"), "ا").replace("ة", "ه").replace("ى", "ي")
+        .replace(Regex("[^\\p{L}\\p{N}]"), "")
+
+    private fun nonLatin(s: String) = s.any { it.isLetter() && it.code > 0x24F }
+
+    /** Cherche sur TMDB et renvoie le résultat qui correspond au titre (aussi pour les titres arabes). */
+    private fun findBest(client: okhttp3.OkHttpClient, apiKey: String, kind: String, name: String, year: String): org.json.JSONObject? {
+        val yp = if (year.isNotBlank()) (if (kind == "movie") "&year=$year" else "&first_air_date_year=$year") else ""
+        fun search(lang: String): List<org.json.JSONObject> {
+            val url = "https://api.themoviedb.org/3/search/$kind?api_key=$apiKey&language=$lang&query=" + java.net.URLEncoder.encode(name, "UTF-8") + yp
+            val arr = client.newCall(okhttp3.Request.Builder().url(url).build()).execute().use { r ->
+                if (r.isSuccessful) r.body?.string()?.let { org.json.JSONObject(it).optJSONArray("results") } else null
+            } ?: return emptyList()
+            return (0 until arr.length()).map { arr.getJSONObject(it) }
+        }
+        val target = norm(name)
+        if (target.isBlank()) return null
+        val titleKey = if (kind == "movie") "title" else "name"
+        val origKey = if (kind == "movie") "original_title" else "original_name"
+        fun match(l: List<org.json.JSONObject>) = l.firstOrNull { norm(it.optString(titleKey)) == target || norm(it.optString(origKey)) == target }
+        val fr = search("fr-FR")
+        match(fr)?.let { return it }
+        if (nonLatin(name)) {
+            // Titre arabe : on compare avec les titres arabes de TMDB, sinon le 1er résultat de la recherche
+            val ar = search("ar")
+            match(ar)?.let { m -> return fr.firstOrNull { it.optInt("id") == m.optInt("id") } ?: m }
+            return fr.firstOrNull()
+        }
+        return fr.firstOrNull()?.takeIf { year.isNotBlank() }
+    }
 
     /** « FR - Malfaisante (2026) » → (« Malfaisante », « 2026 ») */
     fun split(raw: String): Pair<String, String> {
@@ -92,7 +125,7 @@ object TmdbArt {
     }
 
     fun cached(kind: String, raw: String): Art? {
-        val k = "$kind|$raw"
+        val k = "2|$kind|$raw"
         mem[k]?.let { return it }
         val v = prefs?.getString(k, null) ?: return null
         val parts = v.split("|")
@@ -114,22 +147,7 @@ object TmdbArt {
         overviews["$kind|$raw"]?.let { return it }
         return limiter.withPermit {
             val (name, year) = split(raw)
-            val txt = try {
-                val yp = if (year.isNotBlank()) (if (kind == "movie") "&year=$year" else "&first_air_date_year=$year") else ""
-                val url = "https://api.themoviedb.org/3/search/$kind?api_key=$apiKey&language=fr-FR&query=" + java.net.URLEncoder.encode(name, "UTF-8") + yp
-                val res = client.newCall(okhttp3.Request.Builder().url(url).build()).execute().use { r ->
-                    if (r.isSuccessful) r.body?.string()?.let { org.json.JSONObject(it).optJSONArray("results") } else null
-                }
-                if (res == null || res.length() == 0) "" else {
-                    val list = (0 until res.length()).map { res.getJSONObject(it) }
-                    val target = norm(name)
-                    val titleKey = if (kind == "movie") "title" else "name"
-                    val origKey = if (kind == "movie") "original_title" else "original_name"
-                    val best = list.firstOrNull { norm(it.optString(titleKey)) == target || norm(it.optString(origKey)) == target }
-                        ?: list.first().takeIf { year.isNotBlank() }
-                    best?.optString("overview")?.trim() ?: ""
-                }
-            } catch (_: Exception) { "" }
+            val txt = try { findBest(client, apiKey, kind, name, year)?.optString("overview")?.trim() ?: "" } catch (_: Exception) { "" }
             overviews["$kind|$raw"] = txt
             txt
         }
@@ -144,26 +162,14 @@ object TmdbArt {
             cached(kind, raw)?.let { return@withPermit it.takeIf { a -> a != NONE } }
             val (name, year) = split(raw)
             val art = try {
-                val yp = if (year.isNotBlank()) (if (kind == "movie") "&year=$year" else "&first_air_date_year=$year") else ""
-                val url = "https://api.themoviedb.org/3/search/$kind?api_key=$apiKey&language=fr-FR&query=" + java.net.URLEncoder.encode(name, "UTF-8") + yp
-                val res = client.newCall(okhttp3.Request.Builder().url(url).build()).execute().use { r ->
-                    if (r.isSuccessful) r.body?.string()?.let { org.json.JSONObject(it).optJSONArray("results") } else null
-                }
-                if (res == null || res.length() == 0) NONE else {
-                    val list = (0 until res.length()).map { res.getJSONObject(it) }
-                    val target = norm(name)
-                    val titleKey = if (kind == "movie") "title" else "name"
-                    val origKey = if (kind == "movie") "original_title" else "original_name"
-                    val best = list.firstOrNull { norm(it.optString(titleKey)) == target || norm(it.optString(origKey)) == target }
-                        ?: list.first().takeIf { year.isNotBlank() }   // avec l'année, le 1er résultat est fiable
-                    if (best == null) NONE else Art(
-                        best.optString("poster_path").takeIf { it.startsWith("/") }?.let { "https://image.tmdb.org/t/p/w342$it" } ?: "",
-                        best.optString("backdrop_path").takeIf { it.startsWith("/") }?.let { "https://image.tmdb.org/t/p/w1280$it" } ?: ""
-                    )
-                }
+                val best = findBest(client, apiKey, kind, name, year)
+                if (best == null) NONE else Art(
+                    best.optString("poster_path").takeIf { it.startsWith("/") }?.let { "https://image.tmdb.org/t/p/w342$it" } ?: "",
+                    best.optString("backdrop_path").takeIf { it.startsWith("/") }?.let { "https://image.tmdb.org/t/p/w1280$it" } ?: ""
+                )
             } catch (_: Exception) { null }
             if (art != null) {
-                val k = "$kind|$raw"
+                val k = "2|$kind|$raw"
                 mem[k] = art
                 prefs?.edit()?.putString(k, "${art.poster}|${art.backdrop}|${System.currentTimeMillis()}")?.apply()
             }

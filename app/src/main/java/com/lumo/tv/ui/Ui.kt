@@ -142,7 +142,9 @@ fun PosterCard(
 ) {
     // Affiche TMDB (meilleure qualité) si la clé est réglée, sinon celle du fournisseur
     val art = rememberTmdbArt(kind, title)
-    val image = art?.poster?.ifBlank { null } ?: image
+    val providerImg = image
+    var tmdbFailed by remember(title) { mutableStateOf(false) }
+    val image = (if (tmdbFailed) null else art?.poster?.ifBlank { null }) ?: image
     FocusBox(modifier = Modifier.width(width).aspectRatio(2f / 3f), onLongClick = onLongClick, onClick = onClick) { _ ->
         Box(Modifier.fillMaxSize().background(C.Card2)) {
             Text(
@@ -154,7 +156,8 @@ fun PosterCard(
                 overflow = TextOverflow.Ellipsis
             )
             if (image.isNotBlank()) {
-                AsyncImage(model = image, contentDescription = title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                AsyncImage(model = image, contentDescription = title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                    onError = { if (image != providerImg) tmdbFailed = true })
             }
             if (badge != null) {
                 Text(
