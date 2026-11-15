@@ -78,11 +78,12 @@ fun VodBrowser(m: AppModel, series: Boolean) {
             content(Modifier.weight(1f).fillMaxHeight())
         }
     } else {
+        // Téléphone : les catégories en bas, près du pouce
         Column(Modifier.fillMaxSize()) {
-            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            content(Modifier.weight(1f))
+            LazyRow(Modifier.fillMaxWidth().background(Color(0xFF0E0E0E)), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(cats, key = { it.id }) { c -> Chip(c.name, sel == c.id) { sel = c.id } }
             }
-            content(Modifier.weight(1f))
         }
     }
 }

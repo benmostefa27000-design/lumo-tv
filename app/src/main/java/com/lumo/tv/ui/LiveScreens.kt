@@ -107,12 +107,13 @@ fun LiveScreen(m: AppModel) {
             ChannelList(m, list, Modifier.weight(1f).focusRequester(chanFr).focusGroup())
         }
     } else {
+        // Téléphone : les catégories en bas, près du pouce
         Column(Modifier.fillMaxSize()) {
-            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ChannelList(m, list, Modifier.weight(1f).padding(horizontal = 12.dp))
+            LazyRow(Modifier.fillMaxWidth().background(Color(0xFF0E0E0E)), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 item(key = "__sort") { Chip(sortLabel, false) { nextSort() } }
                 items(catItems, key = { it.first }) { (id, name) -> Chip(name, sel == id) { sel = id } }
             }
-            ChannelList(m, list, Modifier.weight(1f).padding(horizontal = 12.dp))
         }
     }
 }
