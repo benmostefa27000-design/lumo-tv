@@ -173,8 +173,9 @@ private fun HeroFlow(m: AppModel, films: List<Vod>) {
     val plots = remember { mutableStateMapOf<String, String>() }
     LaunchedEffect(v.id) {
         if (!plots.containsKey(v.id)) {
-            val p = withContext(Dispatchers.IO) { try { m.client?.vodInfo(v.id)?.plot } catch (_: Exception) { null } }
-            plots[v.id] = p?.trim() ?: ""
+            val p = withContext(Dispatchers.IO) { try { m.client?.vodInfo(v.id)?.plot } catch (_: Exception) { null } }?.trim().orEmpty()
+            // Pas de résumé chez le fournisseur → résumé en français de TMDB
+            plots[v.id] = p.ifBlank { withContext(Dispatchers.IO) { com.lumo.tv.data.TmdbArt.overview("movie", v.name) } }
         }
     }
     val flow = remember(films) {

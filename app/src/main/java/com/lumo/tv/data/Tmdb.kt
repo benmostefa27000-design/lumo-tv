@@ -104,6 +104,37 @@ object TmdbArt {
         return art
     }
 
+    private val overviews = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /** Résumé en français depuis TMDB (quand le fournisseur n'en donne pas). */
+    suspend fun overview(kind: String, raw: String): String {
+        val apiKey = key
+        val client = http ?: return ""
+        if (apiKey.isBlank() || raw.isBlank()) return ""
+        overviews["$kind|$raw"]?.let { return it }
+        return limiter.withPermit {
+            val (name, year) = split(raw)
+            val txt = try {
+                val yp = if (year.isNotBlank()) (if (kind == "movie") "&year=$year" else "&first_air_date_year=$year") else ""
+                val url = "https://api.themoviedb.org/3/search/$kind?api_key=$apiKey&language=fr-FR&query=" + java.net.URLEncoder.encode(name, "UTF-8") + yp
+                val res = client.newCall(okhttp3.Request.Builder().url(url).build()).execute().use { r ->
+                    if (r.isSuccessful) r.body?.string()?.let { org.json.JSONObject(it).optJSONArray("results") } else null
+                }
+                if (res == null || res.length() == 0) "" else {
+                    val list = (0 until res.length()).map { res.getJSONObject(it) }
+                    val target = norm(name)
+                    val titleKey = if (kind == "movie") "title" else "name"
+                    val origKey = if (kind == "movie") "original_title" else "original_name"
+                    val best = list.firstOrNull { norm(it.optString(titleKey)) == target || norm(it.optString(origKey)) == target }
+                        ?: list.first().takeIf { year.isNotBlank() }
+                    best?.optString("overview")?.trim() ?: ""
+                }
+            } catch (_: Exception) { "" }
+            overviews["$kind|$raw"] = txt
+            txt
+        }
+    }
+
     suspend fun lookup(kind: String, raw: String): Art? {
         val apiKey = key
         val client = http ?: return null
