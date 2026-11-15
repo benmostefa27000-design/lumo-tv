@@ -213,6 +213,8 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     var banner by remember { mutableStateOf<String?>(null) }
     var chanList by remember { mutableStateOf(false) }
     var subsPanel by remember { mutableStateOf(false) }
+    // Panneau de choix : sous-titres ou langue audio (même panneau)
+    var pickAudio by remember { mutableStateOf(false) }
     var tvMenu by remember { mutableStateOf(false) }
     val chanFr = remember { androidx.compose.ui.focus.FocusRequester() }
     val subsFr = remember { androidx.compose.ui.focus.FocusRequester() }
@@ -690,7 +692,8 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 // Téléphone : boutons ronds avec icônes (Chaînes tout à droite)
                 // (en direct, elles sont en bas à droite pour ne pas cacher le logo de la chaîne)
                 if (!m.isTv && item !is Playable.Live) {
-                    IconPill("Sous-titres", onClick = { subsPanel = !subsPanel }) { drawSubtitles() }
+                    IconPill("Langue audio", onClick = { pickAudio = true; subsPanel = !subsPanel }) { drawAudioLang() }
+                    IconPill("Sous-titres", onClick = { pickAudio = false; subsPanel = !subsPanel }) { drawSubtitles() }
                     IconPill("Image : " + modeNames[videoMode], active = videoMode != 0, onClick = { nextVideoMode() }) { drawAspect() }
                     IconPill("Synchro du son", active = avDelay != 0, onClick = { panel = !panel }) { drawSync() }
                 }
@@ -837,12 +840,13 @@ fun PlayerScreen(m: AppModel, start: Playable) {
 
         if (subsPanel && !m.pip) {
             tracksTick
-            val textGroups = player.currentTracks.groups.filter { it.type == MC.TRACK_TYPE_TEXT }
-            val off = MC.TRACK_TYPE_TEXT in player.trackSelectionParameters.disabledTrackTypes || textGroups.none { it.isSelected }
+            val tType = if (pickAudio) MC.TRACK_TYPE_AUDIO else MC.TRACK_TYPE_TEXT
+            val textGroups = player.currentTracks.groups.filter { it.type == tType }
+            val off = !pickAudio && (MC.TRACK_TYPE_TEXT in player.trackSelectionParameters.disabledTrackTypes || textGroups.none { it.isSelected })
             fun choose(g: androidx.media3.common.Tracks.Group?, i: Int) {
-                val b = player.trackSelectionParameters.buildUpon().clearOverridesOfType(MC.TRACK_TYPE_TEXT)
-                if (g == null) b.setTrackTypeDisabled(MC.TRACK_TYPE_TEXT, true)
-                else b.setTrackTypeDisabled(MC.TRACK_TYPE_TEXT, false).setOverrideForType(androidx.media3.common.TrackSelectionOverride(g.mediaTrackGroup, i))
+                val b = player.trackSelectionParameters.buildUpon().clearOverridesOfType(tType)
+                if (g == null) b.setTrackTypeDisabled(tType, true)
+                else b.setTrackTypeDisabled(tType, false).setOverrideForType(androidx.media3.common.TrackSelectionOverride(g.mediaTrackGroup, i))
                 player.trackSelectionParameters = b.build()
                 subsPanel = false
             }
@@ -851,28 +855,37 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(300.dp).background(Color(0xF0141414)),
                 contentPadding = PaddingValues(vertical = 16.dp)
             ) {
-                item { Text("Sous-titres", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)) }
-                item {
+                item { Text(if (pickAudio) "Langue audio" else "Sous-titres", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)) }
+                if (!pickAudio) item {
                     Text(
                         (if (off) "✓  " else "    ") + "Aucun", color = Color.White, fontSize = 16.sp, fontWeight = if (off) FontWeight.Bold else FontWeight.Normal,
                         modifier = Modifier.fillMaxWidth().focusRequester(subsFr).tvClickable { choose(null, 0) }.padding(horizontal = 18.dp, vertical = 14.dp)
                     )
                 }
+                var n = 0
                 textGroups.forEach { g ->
                     for (i in 0 until g.length) {
                         val f = g.getTrackFormat(i)
-                        val name = f.label ?: f.language?.let { java.util.Locale(it).getDisplayLanguage(java.util.Locale.FRENCH).replaceFirstChar { c -> c.uppercase() } } ?: "Piste ${i + 1}"
+                        n++
+                        val langName = f.language?.takeIf { it != "und" }?.let { java.util.Locale(it).getDisplayLanguage(java.util.Locale.FRENCH).replaceFirstChar { c -> c.uppercase() } }
+                        val base = f.label ?: langName ?: (if (pickAudio) "Audio $n" else "Piste $n")
+                        val extra = if (pickAudio && f.channelCount >= 6) " · 5.1" else ""
+                        val name = base + extra
                         val selected = !off && g.isTrackSelected(i)
+                        // Audio : la sélection de la télécommande arrive directement sur la langue en cours
+                        val firstAudio = pickAudio && (selected || (n == 1 && textGroups.none { it.isSelected }))
                         item {
                             Text(
                                 (if (selected) "✓  " else "    ") + name, color = if (selected) Color.White else C.Sub, fontSize = 16.sp,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                modifier = Modifier.fillMaxWidth().tvClickable { choose(g, i) }.padding(horizontal = 18.dp, vertical = 14.dp)
+                                modifier = Modifier.fillMaxWidth().then(if (firstAudio) Modifier.focusRequester(subsFr) else Modifier)
+                                    .tvClickable { choose(g, i) }.padding(horizontal = 18.dp, vertical = 14.dp)
                             )
                         }
                     }
                 }
-                if (textGroups.isEmpty()) item { Text("Pas de sous-titres pour ce film. S'ils restent affichés, ils sont incrustés dans l'image et ne peuvent pas être enlevés.", color = C.Sub, fontSize = 14.sp, modifier = Modifier.padding(18.dp)) }
+                if (pickAudio && n <= 1) item { Text("Une seule langue audio est disponible pour ce programme.", color = C.Sub, fontSize = 14.sp, modifier = Modifier.padding(18.dp)) }
+                if (textGroups.isEmpty() && !pickAudio) item { Text("Pas de sous-titres pour ce film. S'ils restent affichés, ils sont incrustés dans l'image et ne peuvent pas être enlevés.", color = C.Sub, fontSize = 14.sp, modifier = Modifier.padding(18.dp)) }
             }
         }
 
@@ -965,7 +978,8 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     if (ep.index > 0) entry("Épisode préc.", onClick = { epStep(-1); tvMenu = false }) { drawArrow(-1) }
                     if (ep.index < ep.episodes.lastIndex) entry("Épisode suiv.", onClick = { epStep(1); tvMenu = false }) { drawArrow(1) }
                 }
-                if (live == null) entry("Sous-titres", onClick = { subsPanel = true }) { drawSubtitles() }
+                entry("Langue audio", onClick = { pickAudio = true; subsPanel = true }) { drawAudioLang() }
+                if (live == null) entry("Sous-titres", onClick = { pickAudio = false; subsPanel = true }) { drawSubtitles() }
                 entry(modeNames[videoMode], active = videoMode != 0, onClick = { nextVideoMode() }) { drawAspect() }
                 entry("Synchro son", active = avDelay != 0, onClick = { panel = true }) { drawSync() }
                 if (live != null && live.list.size > 1) entry("Chaînes", onClick = { chanList = true }) { drawChannels() }
@@ -1102,6 +1116,20 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSubtitles() {
     drawLine(Color.White, androidx.compose.ui.geometry.Offset(w * 0.22f, h * 0.62f), androidx.compose.ui.geometry.Offset(w * 0.6f, h * 0.62f), strokeWidth = sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
 }
 
+
+/** Langue audio : bulle de dialogue avec une onde sonore. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawAudioLang() {
+    val w = size.width; val h = size.height
+    val sw = w * 0.09f
+    val st = androidx.compose.ui.graphics.drawscope.Stroke(sw, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round)
+    val path = androidx.compose.ui.graphics.Path().apply {
+        moveTo(w * 0.15f, h * 0.15f); lineTo(w * 0.85f, h * 0.15f); lineTo(w * 0.85f, h * 0.68f)
+        lineTo(w * 0.45f, h * 0.68f); lineTo(w * 0.25f, h * 0.88f); lineTo(w * 0.27f, h * 0.68f); lineTo(w * 0.15f, h * 0.68f); close()
+    }
+    drawPath(path, Color.White, style = st)
+    val xs = listOf(0.33f to 0.12f, 0.44f to 0.2f, 0.56f to 0.14f, 0.67f to 0.08f)
+    for ((x, hh) in xs) drawLine(Color.White, androidx.compose.ui.geometry.Offset(w * x, h * (0.415f - hh)), androidx.compose.ui.geometry.Offset(w * x, h * (0.415f + hh)), strokeWidth = sw * 0.8f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+}
 
 /** Ligne cliquable qui se surligne quand elle a le focus (télécommande). */
 private fun Modifier.tvClickable(onClick: () -> Unit): Modifier = composed {
