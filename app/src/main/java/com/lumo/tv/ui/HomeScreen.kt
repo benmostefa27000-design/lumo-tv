@@ -182,13 +182,15 @@ private fun HeroFlow(m: AppModel, films: List<Vod>) {
     }
     Box(Modifier.fillMaxWidth()) {
         // Fond : grande image du film au centre, floutée et assombrie, en fondu enchaîné
-        androidx.compose.animation.Crossfade(targetState = v, animationSpec = androidx.compose.animation.core.tween(900), label = "heroBg", modifier = Modifier.matchParentSize()) { f ->
+        androidx.compose.animation.Crossfade(targetState = v, animationSpec = androidx.compose.animation.core.tween(1200), label = "heroBg", modifier = Modifier.matchParentSize()) { f ->
             val art = rememberTmdbArt("movie", f.name)
             val bg = art?.backdrop?.ifBlank { null } ?: art?.poster?.ifBlank { null } ?: f.icon
             Box(Modifier.fillMaxSize()) {
+                // Fond flouté : image chargée en petit (elle est floue de toute façon) → fondu plus léger et fluide
                 if (bg.isNotBlank()) AsyncImage(
-                    model = bg, contentDescription = null, contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().then(if (android.os.Build.VERSION.SDK_INT >= 31) Modifier.blur(18.dp) else Modifier).graphicsLayer { alpha = 0.55f }
+                    model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current).data(bg).size(480, 270).build(),
+                    contentDescription = null, contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().then(if (android.os.Build.VERSION.SDK_INT >= 31) Modifier.blur(12.dp) else Modifier).graphicsLayer { alpha = 0.55f }
                 )
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0x99000000), Color(0x55000000), Color.Black))))
             }

@@ -95,7 +95,7 @@ fun CoverFlow(
         while (autoMs > 0 && !focused && last > 0) {
             kotlinx.coroutines.delay(autoMs)
             val c = pos.value.roundToInt()
-            pos.animateTo((if (c >= last) 0 else c + 1).toFloat(), androidx.compose.animation.core.tween(900, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+            pos.animateTo((if (c >= last) 0 else c + 1).toFloat(), androidx.compose.animation.core.tween(1200, easing = androidx.compose.animation.core.CubicBezierEasing(0.45f, 0f, 0.2f, 1f)))
         }
     }
     LaunchedEffect(current) { onCurrent?.invoke(current) }
@@ -137,8 +137,8 @@ fun CoverFlow(
                 },
             contentAlignment = Alignment.TopCenter
         ) {
-            val lo = max(0, current - 6)
-            val hi = min(last, current + 6)
+            val lo = max(0, current - 5)
+            val hi = min(last, current + 5)
             val spread = near1 * (1f + (centerScale - 1f) * 1.1f)
             for (k in lo..hi) {
                 val item = items[k]
@@ -167,6 +167,13 @@ fun CoverFlow(
                             }
                             .pointerInput(k) { detectTapGestures { if (k == pos.value.roundToInt()) onOpen(k) else goTo(k) } }
                     ) {
+                        // Une seule image chargée par affiche, réutilisée pour le reflet (moins de travail = plus fluide)
+                        val imgUrl = if (card == null) (rememberTmdbArt(item.kind, item.title)?.poster?.ifBlank { null } ?: item.image) else ""
+                        val ctx = androidx.compose.ui.platform.LocalContext.current
+                        val pxW = with(density) { cardW.roundToPx() }
+                        val painter = if (imgUrl.isNotBlank()) coil.compose.rememberAsyncImagePainter(
+                            coil.request.ImageRequest.Builder(ctx).data(imgUrl).size(pxW, (pxW * 1.5f).toInt()).crossfade(250).build()
+                        ) else null
                         Box(
                             Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)).background(C.Card2)
                                 // Assombrir les affiches sur les côtés (calculé au dessin, sans recomposition)
@@ -179,8 +186,7 @@ fun CoverFlow(
                         ) {
                             if (card != null) card(item) else {
                                 Text(item.title, color = C.Sub, fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.align(Alignment.Center).padding(10.dp))
-                                val img = rememberTmdbArt(item.kind, item.title)?.poster?.ifBlank { null } ?: item.image
-                                if (img.isNotBlank()) AsyncImage(model = img, contentDescription = item.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                if (painter != null) androidx.compose.foundation.Image(painter, item.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                             }
                             // Assombrir les affiches sur les côtés
                         }
@@ -189,8 +195,8 @@ fun CoverFlow(
                             Modifier.offset(y = cardH + 6.dp).fillMaxWidth().height(cardH * 0.3f).clipToBounds()
                         ) {
                             if (card != null) Box(Modifier.requiredSize(cardW, cardH).align(Alignment.TopCenter).graphicsLayer { scaleY = -1f; alpha = 0.35f }.clip(RoundedCornerShape(8.dp))) { card(item) }
-                            else if (item.image.isNotBlank()) AsyncImage(
-                                model = rememberTmdbArt(item.kind, item.title)?.poster?.ifBlank { null } ?: item.image, contentDescription = null, contentScale = ContentScale.Crop,
+                            else if (painter != null) androidx.compose.foundation.Image(
+                                painter, null, contentScale = ContentScale.Crop,
                                 modifier = Modifier.requiredSize(cardW, cardH).align(Alignment.TopCenter).graphicsLayer { scaleY = -1f; alpha = 0.35f }
                             )
                             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0x66000000), Color.Black))))
