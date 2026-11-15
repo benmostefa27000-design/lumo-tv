@@ -94,7 +94,7 @@ fun HomeScreen(m: AppModel) {
     val favSer = run { m.store.version; m.store.favs(m.pid, "series") }
     // Si l'affiche d'un film ne se charge pas, on passe au film suivant
     // Film en vedette : défile tout seul toutes les 8 s en fondu enchaîné (les films sans image sont sautés)
-    val heroList = remember(recentVods) { recentVods.filter { it.icon.isNotBlank() }.ifEmpty { recentVods }.take(15) }
+    val heroList = remember(recentVods) { recentVods.filter { it.icon.isNotBlank() }.ifEmpty { recentVods }.take(10) }
     val badHero = remember(heroList) { mutableStateListOf<String>() }
     val heroOk = heroList.filter { it.id !in badHero }.ifEmpty { heroList }
     var heroIdx by remember(heroList) { mutableIntStateOf(0) }
@@ -110,11 +110,24 @@ fun HomeScreen(m: AppModel) {
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val listScope = rememberCoroutineScope()
     LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 32.dp)) {
-        // TV : quand on est sur les affiches ou les boutons du haut, la page reste tout en haut (rien n'est coupé)
-        if (heroList.size >= 3) item(key = "heroflow") { HeroFlow(m, heroList) {
-            listScope.launch { kotlinx.coroutines.delay(60); listState.animateScrollToItem(0) }
-        } }
-        else if (hero != null) item { Hero(m, hero) { if (hero.id !in badHero) badHero.add(hero.id) } }
+        // Haut de l'accueil classique : grande affiche du film en fondu enchaîné (retour à la version d'avant l'effet iPad)
+        if (hero != null) item {
+            Box(Modifier.onFocusChanged { heroFocused = it.hasFocus }) {
+                androidx.compose.animation.Crossfade(targetState = hero, animationSpec = androidx.compose.animation.core.tween(1000), label = "hero") { v ->
+                    Hero(m, v) { if (v.id !in badHero) badHero.add(v.id) }
+                }
+                // Petits points : quel film est affiché
+                if (heroOk.size > 1) Row(
+                    Modifier.align(Alignment.BottomEnd).padding(end = LocalPad.current, bottom = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    heroOk.forEachIndexed { i, _ ->
+                        val on = i == heroIdx % heroOk.size
+                        Box(Modifier.height(4.dp).width(if (on) 16.dp else 6.dp).background(if (on) C.Red else Color(0x66FFFFFF), RoundedCornerShape(2.dp)))
+                    }
+                }
+            }
+        }
         if (progress.isNotEmpty()) item {
             RowSection("Reprendre la lecture") {
                 items(progress, key = { it.key }) { p -> ProgressCard(m, p, cardW, vodsById, seriesById) }
@@ -129,7 +142,15 @@ fun HomeScreen(m: AppModel) {
             favSer.mapNotNull { seriesById[it] }.map { Triple(it.id, it.name, it.cover) to it }
         if (myList.isNotEmpty()) item(key = "mylist") { FlowOrRow(m, "Ma liste", "fav", myList.map { it.second }, cardW) }
         val anim = run { m.store.version; m.store.anim3d }
-        if (recentVods.size > 10) item {
+        if (anim && recentVods.size >= 3) item(key = "flow") {
+            val flow = remember(recentVods) {
+                recentVods.take(25).map { v ->
+                    FlowItem(v.id, v.name, v.icon, listOfNotNull("Film", v.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { "★ %.1f".format(it) }).joinToString(" · "))
+                }
+            }
+            CoverFlow("Nouveautés", flow.map { it.copy(kind = "movie") }, m.isTv) { i -> m.go(Screen.MovieDetail(recentVods[i])) }
+        }
+        if (recentVods.isNotEmpty() && !anim) item {
             RowSection("Films ajoutés récemment") {
                 items(recentVods, key = { "rv" + it.id }) { v -> PosterCard(v.name, v.icon, cardW, kind = "movie") { m.go(Screen.MovieDetail(v)) } }
             }
