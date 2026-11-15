@@ -1,5 +1,11 @@
 package com.lumo.tv.ui
 
+import androidx.compose.ui.input.key.type
+
+import androidx.compose.ui.input.key.key
+
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -70,12 +76,27 @@ fun FocusBox(
     content: @Composable BoxScope.(focused: Boolean) -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
+    var longFired by remember { mutableStateOf(false) }
     val s by animateFloatAsState(if (focused) scale else 1f, label = "focusScale")
     Box(
         modifier
             .graphicsLayer { scaleX = s; scaleY = s }
             .onFocusChanged { focused = it.isFocused }
             .then(if (requester != null) Modifier.focusRequester(requester) else Modifier)
+            // Télécommande : appui long sur OK (ou bouton Menu ≡) = action secondaire (ex. supprimer de « Reprendre »)
+            .then(if (onLongClick == null) Modifier else Modifier.onPreviewKeyEvent { e ->
+                val k = e.key
+                val ok = k == androidx.compose.ui.input.key.Key.DirectionCenter || k == androidx.compose.ui.input.key.Key.Enter || k == androidx.compose.ui.input.key.Key.NumPadEnter
+                when {
+                    k == androidx.compose.ui.input.key.Key.Menu && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown -> { onLongClick(); true }
+                    ok && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount > 0 -> {
+                        if (!longFired) { longFired = true; onLongClick() }
+                        true
+                    }
+                    ok && e.type == androidx.compose.ui.input.key.KeyEventType.KeyUp && longFired -> { longFired = false; true }
+                    else -> false
+                }
+            })
             .clip(shape)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .then(if (focused && border) Modifier.border(3.dp, Color.White, shape) else Modifier)
