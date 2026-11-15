@@ -201,8 +201,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     val panelFr = remember { androidx.compose.ui.focus.FocusRequester() }
     var avDelay by remember { mutableIntStateOf(0) }
     var retries by remember { mutableIntStateOf(0) }
-    // Faux au départ : les infos ne s'affichent que si le lecteur montre vraiment ses commandes (et s'effacent avec elles)
-    var controlsVisible by remember { mutableStateOf(false) }
+    var controlsVisible by remember { mutableStateOf(true) }
     // TV : commandes maison pilotées par la télécommande
     var showUi by remember { mutableStateOf(true) }
     var uiTick by remember { mutableIntStateOf(0) }
