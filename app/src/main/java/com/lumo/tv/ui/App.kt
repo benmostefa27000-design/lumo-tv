@@ -260,10 +260,26 @@ private fun TvTopBar(m: AppModel) {
             }
         }
         Spacer(Modifier.weight(1f))
+        TvClock()
+        Spacer(Modifier.width(6.dp))
         IconFocus(Icons.Default.Search, "Rechercher") { m.go(Screen.Search) }
         IconFocus(Icons.Default.Settings, "Réglages") { m.tab = Tab.Settings }
         ProfileBadge(m) { m.openProfiles() }
     }
+}
+
+/** Heure en haut à droite (mise à jour chaque minute). */
+@Composable
+private fun TvClock() {
+    val fmt = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.FRANCE) }
+    var now by remember { mutableStateOf(fmt.format(java.util.Date())) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = fmt.format(java.util.Date())
+            kotlinx.coroutines.delay(60_000L - System.currentTimeMillis() % 60_000L + 50)
+        }
+    }
+    Text(now, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Medium)
 }
 
 @Composable

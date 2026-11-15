@@ -219,9 +219,10 @@ fun CoverFlow(
             }
         }
         val cur = items[current]
-        if (showCaption) Text(cur.title, color = Color.White, fontSize = if (isTv) 26.sp else 22.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp))
+        // Titre propre (sans « FR - » ni l'année) pour les films/séries
+        if (showCaption) Text(if (cur.kind != null) com.lumo.tv.data.TmdbArt.split(cur.title).first.ifBlank { cur.title } else cur.title, color = Color.White, fontSize = if (isTv) 26.sp else 22.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp))
         if (showCaption && cur.meta.isNotBlank()) Text(cur.meta, color = C.Sub, fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-        if (showCaption) Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Center) {
+        if (showCaption && !isTv) Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Center) {
             val start = (current - 6).coerceAtLeast(0)
             val end = (start + 12).coerceAtMost(last)
             for (k in start..end) {

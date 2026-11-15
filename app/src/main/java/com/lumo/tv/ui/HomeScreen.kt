@@ -161,12 +161,13 @@ fun HomeScreen(m: AppModel) {
         if (anim && recentVods.size >= 3) item(key = "flow") {
             val flow = remember(recentVods) {
                 recentVods.take(25).map { v ->
-                    FlowItem(v.id, v.name, v.icon, listOfNotNull("Film", v.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { "★ %.1f".format(it) }).joinToString(" · "))
+                    FlowItem(v.id, v.name, v.icon, listOfNotNull(com.lumo.tv.data.TmdbArt.split(v.name).second.ifBlank { null }, "Film", v.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { "★ %.1f".format(it) }).joinToString(" · "))
                 }
             }
             // TV : sans le titre/points sous les affiches (ils se mélangeaient avec la rangée suivante)
-            Column(Modifier.padding(bottom = if (m.isTv) 16.dp else 0.dp)) {
-                CoverFlow("Nouveautés", flow.map { it.copy(kind = "movie") }, m.isTv, showCaption = !m.isTv) { i -> m.go(Screen.MovieDetail(recentVods[i])) }
+            // Titre + année · note sous l'affiche du milieu, puis un vrai espace avant la rangée suivante
+            Column(Modifier.padding(bottom = if (m.isTv) 28.dp else 0.dp)) {
+                CoverFlow("Nouveautés", flow.map { it.copy(kind = "movie") }, m.isTv) { i -> m.go(Screen.MovieDetail(recentVods[i])) }
             }
         }
         if (recentVods.isNotEmpty() && !anim) item {
