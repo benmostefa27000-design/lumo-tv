@@ -79,12 +79,13 @@ fun LiveScreen(m: AppModel) {
     val catItems = listOf(FAV to "★ Favoris") + (if (hasReplay) listOf(REPLAY to "⟲ Rattrapage") else emptyList()) + cats.map { it.id to it.name }
 
     if (m.isTv) {
-        // En descendant depuis les onglets, on arrive d'abord sur les catégories (pas directement sur les chaînes)
+        // En descendant depuis les onglets, on arrive d'abord sur les chaînes (les catégories sont à gauche)
         val catFr = remember { androidx.compose.ui.focus.FocusRequester() }
+        val chanFr = remember { androidx.compose.ui.focus.FocusRequester() }
         @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
         Row(
             Modifier.fillMaxSize().padding(start = 40.dp, end = 40.dp, top = 8.dp)
-                .focusProperties { enter = { catFr } }.focusGroup(),
+                .focusProperties { enter = { if (list.isEmpty()) catFr else chanFr } }.focusGroup(),
             horizontalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
@@ -102,7 +103,8 @@ fun LiveScreen(m: AppModel) {
                     }
                 }
             }
-            ChannelList(m, list, Modifier.weight(1f))
+            @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+            ChannelList(m, list, Modifier.weight(1f).focusRequester(chanFr).focusRestorer().focusGroup())
         }
     } else {
         Column(Modifier.fillMaxSize()) {
