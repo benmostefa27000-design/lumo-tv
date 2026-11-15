@@ -111,7 +111,15 @@ fun HomeScreen(m: AppModel) {
     val listScope = rememberCoroutineScope()
     LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 32.dp)) {
         // Haut de l'accueil classique : grande affiche du film en fondu enchaîné (retour à la version d'avant l'effet iPad)
-        if (hero != null) item {
+        // TV : bandeau façon Fire TV (image à droite, texte et boutons à gauche)
+        if (hero != null && m.isTv) item(key = "firehero") {
+            Box(Modifier.onFocusChanged { heroFocused = it.hasFocus; if (it.hasFocus) listScope.launch { listState.animateScrollToItem(0) } }) {
+                FireHero(m, hero, heroOk.size, heroIdx % heroOk.size.coerceAtLeast(1),
+                    onStep = { d -> heroIdx = ((heroIdx + d) % heroOk.size + heroOk.size) % heroOk.size },
+                    onNoImage = { if (hero.id !in badHero) badHero.add(hero.id) })
+            }
+        }
+        else if (hero != null) item {
             Box(Modifier.onFocusChanged { heroFocused = it.hasFocus }) {
                 androidx.compose.animation.Crossfade(targetState = hero, animationSpec = androidx.compose.animation.core.tween(1000), label = "hero") { v ->
                     Hero(m, v) { if (v.id !in badHero) badHero.add(v.id) }
@@ -410,6 +418,90 @@ private fun Hero(m: AppModel, v: Vod, onNoImage: () -> Unit = {}) {
                 LumoButton("Plus d'infos", primary = false, icon = { Icon(Icons.Default.Info, null, tint = Color.White) }) {
                     m.go(Screen.MovieDetail(v))
                 }
+            }
+        }
+    }
+}
+
+/** Bandeau d'accueil TV façon Fire TV : grande image à droite fondue dans le noir, infos et boutons à gauche. */
+@Composable
+private fun FireHero(m: AppModel, v: Vod, count: Int, index: Int, onStep: (Int) -> Unit, onNoImage: () -> Unit) {
+    val infos = remember { mutableStateMapOf<String, VodInfo?>() }
+    val plots = remember { mutableStateMapOf<String, String>() }
+    LaunchedEffect(v.id) {
+        if (!infos.containsKey(v.id)) {
+            val inf = withContext(Dispatchers.IO) { try { m.client?.vodInfo(v.id) } catch (_: Exception) { null } }
+            infos[v.id] = inf
+            plots[v.id] = inf?.plot?.trim().orEmpty().ifBlank { withContext(Dispatchers.IO) { com.lumo.tv.data.TmdbArt.overview("movie", v.name) } }
+        }
+    }
+    val bg = Color(0xFF101014)
+    val h = screenHeightDp() * 0.5f
+    Box(
+        Modifier.fillMaxWidth().padding(horizontal = LocalPad.current, vertical = 6.dp).height(h)
+            .clip(RoundedCornerShape(12.dp)).background(bg)
+    ) {
+        // Image à droite (2/3 de la largeur), fondue vers la gauche et vers le bas
+        androidx.compose.animation.Crossfade(targetState = v, animationSpec = androidx.compose.animation.core.tween(900), label = "fireImg",
+            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().fillMaxWidth(0.68f)) { f ->
+            val art = rememberTmdbArt("movie", f.name)
+            val imgs = listOfNotNull(art?.backdrop?.ifBlank { null }, infos[f.id]?.backdrop?.ifBlank { null }, f.icon.ifBlank { null }).distinct()
+            var ci by remember(f.id, imgs.size) { mutableIntStateOf(0) }
+            Box(Modifier.fillMaxSize()) {
+                imgs.getOrNull(ci)?.let { img ->
+                    AsyncImage(model = img, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                        onError = { if (ci + 1 < imgs.size) ci++ else if (f.id == v.id) onNoImage() })
+                }
+                Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to bg, 0.45f to bg.copy(alpha = 0.55f), 1f to Color.Transparent)))
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.6f to Color.Transparent, 1f to bg.copy(alpha = 0.8f))))
+            }
+        }
+        // Infos à gauche
+        Column(
+            Modifier.align(Alignment.CenterStart).fillMaxWidth(0.46f).padding(start = 28.dp, end = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            androidx.compose.animation.AnimatedContent(targetState = v, label = "fireTxt", transitionSpec = {
+                androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(500)) togetherWith androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(250))
+            }) { f ->
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(com.lumo.tv.data.Tmdb.cleanName(f.name).ifBlank { f.name }, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Black,
+                        lineHeight = 32.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    val inf = infos[f.id]
+                    val meta = listOfNotNull(
+                        inf?.year?.ifBlank { null } ?: com.lumo.tv.data.TmdbArt.split(f.name).second.ifBlank { null },
+                        "Film",
+                        inf?.genre?.ifBlank { null }?.split(",")?.firstOrNull()?.trim(),
+                        f.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { "★ %.1f".format(it) }
+                    ).joinToString(" · ")
+                    Text(meta, color = C.Sub, fontSize = 13.sp, maxLines = 1)
+                    plots[f.id]?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, color = Color(0xFFD0D0D0), fontSize = 13.sp, lineHeight = 18.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+            // Boutons hors de l'animation : la sélection de la télécommande ne saute pas quand le film change
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 6.dp)) {
+                LumoButton("Lecture", modifier = Modifier.onPreviewKeyEvent { e ->
+                    if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && e.key == androidx.compose.ui.input.key.Key.DirectionLeft) { onStep(-1); true } else false
+                }, icon = { Icon(Icons.Default.PlayArrow, null, tint = Color.Black) }) {
+                    m.go(Screen.Player(com.lumo.tv.Playable.Movie(v)))
+                }
+                LumoButton("Plus d'infos", primary = false, modifier = Modifier.onPreviewKeyEvent { e ->
+                    if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && e.key == androidx.compose.ui.input.key.Key.DirectionRight) { onStep(1); true } else false
+                }, icon = { Icon(Icons.Default.Info, null, tint = Color.White) }) {
+                    m.go(Screen.MovieDetail(v))
+                }
+            }
+        }
+        // Petits points : quel film est affiché
+        if (count > 1) Row(
+            Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            repeat(count) { i ->
+                val on = i == index
+                Box(Modifier.height(4.dp).width(if (on) 16.dp else 6.dp).background(if (on) C.Red else Color(0x66FFFFFF), RoundedCornerShape(2.dp)))
             }
         }
     }
