@@ -1,5 +1,9 @@
 package com.lumo.tv.ui
 
+import kotlinx.coroutines.launch
+
+import androidx.compose.ui.focus.focusProperties
+
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.key
@@ -103,8 +107,13 @@ fun HomeScreen(m: AppModel) {
         }
     }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
-        if (heroList.size >= 3) item(key = "heroflow") { HeroFlow(m, heroList) }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val listScope = rememberCoroutineScope()
+    LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 32.dp)) {
+        // TV : quand on est sur les affiches ou les boutons du haut, la page reste tout en haut (rien n'est coupé)
+        if (heroList.size >= 3) item(key = "heroflow") { HeroFlow(m, heroList) {
+            listScope.launch { kotlinx.coroutines.delay(60); listState.animateScrollToItem(0) }
+        } }
         else if (hero != null) item { Hero(m, hero) { if (hero.id !in badHero) badHero.add(hero.id) } }
         if (progress.isNotEmpty()) item {
             RowSection("Reprendre la lecture") {
@@ -171,7 +180,7 @@ private fun FlowOrRow(m: AppModel, title: String, keyPrefix: String, objs: List<
  * Derrière : la grande image du film au centre, en fondu ; dessous : titre et boutons.
  */
 @Composable
-private fun HeroFlow(m: AppModel, films: List<Vod>) {
+private fun HeroFlow(m: AppModel, films: List<Vod>, onFocusTop: () -> Unit = {}) {
     var cur by remember(films) { mutableIntStateOf(1.coerceAtMost(films.lastIndex)) }
     val v = films[cur.coerceIn(0, films.lastIndex)]
     val land = isPhoneLandscape(m.isTv)
@@ -187,7 +196,7 @@ private fun HeroFlow(m: AppModel, films: List<Vod>) {
     val flow = remember(films) {
         films.map { f -> FlowItem(f.id, f.name, f.icon, "", "movie") }
     }
-    Box(Modifier.fillMaxWidth()) {
+    Box(Modifier.fillMaxWidth().onFocusChanged { if (it.hasFocus && m.isTv) onFocusTop() }) {
         // Fond : grande image du film au centre, floutée et assombrie, en fondu enchaîné
         androidx.compose.animation.Crossfade(targetState = v, animationSpec = androidx.compose.animation.core.tween(1200), label = "heroBg", modifier = Modifier.matchParentSize()) { f ->
             val art = rememberTmdbArt("movie", f.name)
@@ -205,6 +214,7 @@ private fun HeroFlow(m: AppModel, films: List<Vod>) {
         val wide = m.isTv || land
         // Titre + résumé + boutons du film du milieu
         val playFr = remember { androidx.compose.ui.focus.FocusRequester() }
+        val flowFr = remember { androidx.compose.ui.focus.FocusRequester() }
         var infoFocused by remember { mutableStateOf(false) }
         var target by remember { mutableIntStateOf(-1) }
         var targetKey by remember { mutableIntStateOf(0) }
@@ -234,16 +244,13 @@ private fun HeroFlow(m: AppModel, films: List<Vod>) {
                 }
                 // Les boutons passent à la ligne s'il manque de place (ils restent toujours atteignables)
                 FlowRowCompat(spacing = 10.dp, center = center) {
-                    // TV : ◀ sur « Lecture » = film précédent
-                    LumoButton("Lecture", requester = playFr, modifier = Modifier.onPreviewKeyEvent { e ->
-                        if (m.isTv && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && e.key == androidx.compose.ui.input.key.Key.DirectionLeft) { step(-1); true } else false
-                    }, icon = { Icon(Icons.Default.PlayArrow, null, tint = Color.Black) }) {
+                    // TV : ▲ depuis les boutons → retour sur les affiches
+                    LumoButton("Lecture", requester = playFr, modifier = if (m.isTv) Modifier.focusProperties { up = flowFr; left = flowFr } else Modifier
+                    , icon = { Icon(Icons.Default.PlayArrow, null, tint = Color.Black) }) {
                         m.go(Screen.Player(com.lumo.tv.Playable.Movie(v)))
                     }
-                    // TV : ▶ sur « Plus d'infos » = film suivant
-                    LumoButton("Plus d'infos", primary = false, modifier = Modifier.onPreviewKeyEvent { e ->
-                        if (m.isTv && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && e.key == androidx.compose.ui.input.key.Key.DirectionRight) { step(1); true } else false
-                    }, icon = { Icon(Icons.Default.Info, null, tint = Color.White) }) {
+                    LumoButton("Plus d'infos", primary = false, modifier = if (m.isTv) Modifier.focusProperties { up = flowFr } else Modifier
+                    , icon = { Icon(Icons.Default.Info, null, tint = Color.White) }) {
                         m.go(Screen.MovieDetail(v))
                     }
                 }
@@ -253,7 +260,7 @@ private fun HeroFlow(m: AppModel, films: List<Vod>) {
             // TV et téléphone à l'horizontale : affiches à gauche, titre/résumé/boutons à droite (tout tient à l'écran)
             // Taille calculée pour que tout le haut tienne dans l'écran (sinon la page défile quand on va sur les boutons)
             val sh = screenHeightDp()
-            val avail = sh - (if (m.isTv) 150.dp else 110.dp)
+            val avail = sh - (if (m.isTv) 190.dp else 110.dp)
             val cw = minOf(if (m.isTv) 150.dp else 105.dp, avail / (1.45f + 0.15f) / 1.5f - 20.dp)
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(0.6f)) {
@@ -261,8 +268,9 @@ private fun HeroFlow(m: AppModel, films: List<Vod>) {
                         title = null, items = flow, isTv = m.isTv, startIndex = cur,
                         width = cw, reflection = 0.15f,
                         autoMs = 5000, showCaption = false, onCurrent = { cur = it }, centerScale = 1.45f,
-                        // TV : la télécommande va directement sur les boutons (les affiches défilent toutes seules)
-                        selectable = !m.isTv, paused = infoFocused, target = target, targetKey = targetKey
+                        // TV : ▼ des onglets → affiches (◀ ▶ pour défiler) ; ▼ encore → Lecture / Plus d'infos
+                        focusRequester = if (m.isTv) flowFr else null, downTo = if (m.isTv) playFr else null,
+                        paused = infoFocused, target = target, targetKey = targetKey
                     ) { i -> m.go(Screen.MovieDetail(films[i])) }
                 }
                 Box(Modifier.weight(0.4f).padding(end = LocalPad.current, start = 4.dp)) { Info(center = false) }
