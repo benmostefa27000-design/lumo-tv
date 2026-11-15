@@ -112,7 +112,17 @@ fun CoverFlow(
     LaunchedEffect(targetKey) { if (targetKey > 0 && target >= 0) goTo(if (target > last) 0 else target) }
 
     Column(Modifier.fillMaxWidth().padding(top = if (compact) 0.dp else 18.dp)) {
-        if (title != null) SectionTitle(title, Modifier.padding(start = LocalPad.current, bottom = 4.dp))
+        // TV : le titre du film du milieu est sur la ligne du titre de la rubrique (il reste collé à « Nouveautés »)
+        if (title != null && isTv && showCaption) {
+            val c0 = items[current]
+            Row(Modifier.fillMaxWidth().padding(start = LocalPad.current, end = LocalPad.current, bottom = 4.dp), verticalAlignment = Alignment.Bottom) {
+                SectionTitle(title)
+                Text("  ·  " + (if (c0.kind != null) com.lumo.tv.data.TmdbArt.split(c0.title).first.ifBlank { c0.title } else c0.title),
+                    color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false))
+                if (c0.meta.isNotBlank()) Text("   " + c0.meta, color = C.Sub, fontSize = 14.sp, maxLines = 1, modifier = Modifier.padding(bottom = 2.dp))
+            }
+        } else if (title != null) SectionTitle(title, Modifier.padding(start = LocalPad.current, bottom = 4.dp))
         Box(
             Modifier
                 .fillMaxWidth()
@@ -220,8 +230,8 @@ fun CoverFlow(
         }
         val cur = items[current]
         // Titre propre (sans « FR - » ni l'année) pour les films/séries
-        if (showCaption) Text(if (cur.kind != null) com.lumo.tv.data.TmdbArt.split(cur.title).first.ifBlank { cur.title } else cur.title, color = Color.White, fontSize = if (isTv) 26.sp else 22.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp))
-        if (showCaption && cur.meta.isNotBlank()) Text(cur.meta, color = C.Sub, fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+        if (showCaption && !(isTv && title != null)) Text(if (cur.kind != null) com.lumo.tv.data.TmdbArt.split(cur.title).first.ifBlank { cur.title } else cur.title, color = Color.White, fontSize = if (isTv) 26.sp else 22.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp))
+        if (showCaption && !(isTv && title != null) && cur.meta.isNotBlank()) Text(cur.meta, color = C.Sub, fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         if (showCaption && !isTv) Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Center) {
             val start = (current - 6).coerceAtLeast(0)
             val end = (start + 12).coerceAtMost(last)
