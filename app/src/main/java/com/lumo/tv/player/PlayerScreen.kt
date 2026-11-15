@@ -673,7 +673,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 }
                 if (m.isTv) {
                     Text(
-                        "OK : pause · Menu ou OK long : son, image et minuteur" + if (item is Playable.Live) " · ▲▼ : chaînes" else " · ◀▶ : −10 s / +30 s",
+                        "OK : pause · Menu ou OK long : son et image" + if (item is Playable.Live) " · ▲▼ : chaînes" else " · ◀▶ : −10 s / +30 s",
                         color = C.Sub, fontSize = 13.sp
                     )
                 }
@@ -682,15 +682,6 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     if (item !is Playable.Live) IconPill("Sous-titres", onClick = { subsPanel = !subsPanel }) { drawSubtitles() }
                     IconPill("Image : " + modeNames[videoMode], active = videoMode != 0, onClick = { nextVideoMode() }) { drawAspect() }
                     IconPill("Synchro du son", active = avDelay != 0, onClick = { panel = !panel }) { drawSync() }
-                    val left = sleepAt?.let { ((it - clock) / 60000).coerceAtLeast(0) }
-                    IconPill("Minuteur", active = left != null, badge = left?.let { "$it" }, onClick = {
-                        val steps = listOf<Long?>(30, 60, 90, null)
-                        val cur = left?.let { l -> steps.firstOrNull { st -> st != null && st >= l + 1 } }
-                        val idx = if (sleepAt == null) 0 else (steps.indexOf(cur) + 1).coerceAtMost(steps.lastIndex)
-                        sleepAt = steps[idx]?.let { min -> System.currentTimeMillis() + min * 60_000 }
-                        clock = System.currentTimeMillis()
-                        m.showToast(if (sleepAt == null) "Minuteur coupé" else "Arrêt dans ${steps[idx]} min")
-                    }) { drawTimer() }
                     if (item is Playable.Live && (item as Playable.Live).list.size > 1) IconPill("Chaînes", active = chanList, onClick = { chanList = !chanList }) { drawChannels() }
                 }
             }
@@ -951,16 +942,6 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     LumoButton("Épisode suivant ›", primary = false) { if (epStep(1)) panel = false }
                 }
                 if (m.isTv) LumoButton("Image : " + modeNames[videoMode], primary = false) { nextVideoMode() }
-                if (m.isTv) {
-                    val l = sleepAt?.let { ((it - clock) / 60000).coerceAtLeast(0) }
-                    LumoButton(if (l == null) "Minuteur : aucun" else "Minuteur : arrêt dans $l min", primary = false) {
-                        val steps = listOf<Long?>(30, 60, 90, null)
-                        val cur = l?.let { x -> steps.firstOrNull { st -> st != null && st >= x + 1 } }
-                        val idx = if (sleepAt == null) 0 else (steps.indexOf(cur) + 1).coerceAtMost(steps.lastIndex)
-                        sleepAt = steps[idx]?.let { min -> System.currentTimeMillis() + min * 60_000 }
-                        clock = System.currentTimeMillis()
-                    }
-                }
                 Text("Mémorisé pour cette chaîne, ce film ou cette série.", color = C.Dim, fontSize = 12.sp)
             }
         }
