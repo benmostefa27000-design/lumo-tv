@@ -154,6 +154,8 @@ private fun TvTopBar(m: AppModel) {
         val fr = rememberAutoFocus(true)
         listOf(Tab.Home, Tab.Live, Tab.Movies, Tab.Series, Tab.MyList).forEach { t ->
             FocusBox(shape = RoundedCornerShape(14.dp), scale = 1.08f, requester = if (t == m.tab) fr else null, onClick = { m.tab = t }) { f ->
+                // Changement d'onglet juste en passant dessus avec les flèches (pas besoin de OK)
+                LaunchedEffect(f) { if (f && m.tab != t) { kotlinx.coroutines.delay(220); m.tab = t } }
                 TabChip(t, selected = m.tab == t, focused = f)
             }
         }
