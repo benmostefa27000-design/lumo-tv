@@ -1,5 +1,9 @@
 package com.lumo.tv.ui
 
+import androidx.compose.foundation.shape.RoundedCornerShape
+
+import androidx.compose.ui.focus.onFocusChanged
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -73,12 +77,38 @@ fun HomeScreen(m: AppModel) {
     val favVod = run { m.store.version; m.store.favs(m.pid, "vod") }
     val favSer = run { m.store.version; m.store.favs(m.pid, "series") }
     // Si l'affiche d'un film ne se charge pas, on passe au film suivant
-    var heroSkip by remember(recentVods) { mutableIntStateOf(0) }
-    val heroList = remember(recentVods) { recentVods.filter { it.icon.isNotBlank() }.ifEmpty { recentVods } }
-    val hero = heroList.getOrNull(heroSkip) ?: heroList.firstOrNull()
+    // Film en vedette : défile tout seul toutes les 8 s en fondu enchaîné (les films sans image sont sautés)
+    val heroList = remember(recentVods) { recentVods.filter { it.icon.isNotBlank() }.ifEmpty { recentVods }.take(10) }
+    val badHero = remember(heroList) { mutableStateListOf<String>() }
+    val heroOk = heroList.filter { it.id !in badHero }.ifEmpty { heroList }
+    var heroIdx by remember(heroList) { mutableIntStateOf(0) }
+    var heroFocused by remember { mutableStateOf(false) }
+    val hero = heroOk.getOrNull(heroIdx % heroOk.size.coerceAtLeast(1))
+    LaunchedEffect(heroList, heroFocused) {
+        while (heroOk.size > 1 && !heroFocused) {
+            kotlinx.coroutines.delay(8000)
+            heroIdx = (heroIdx + 1) % heroOk.size.coerceAtLeast(1)
+        }
+    }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
-        if (hero != null) item { Hero(m, hero) { if (heroSkip < 8 && heroSkip + 1 < heroList.size) heroSkip++ } }
+        if (hero != null) item {
+            Box(Modifier.onFocusChanged { heroFocused = it.hasFocus }) {
+                androidx.compose.animation.Crossfade(targetState = hero, animationSpec = androidx.compose.animation.core.tween(1000), label = "hero") { v ->
+                    Hero(m, v) { if (v.id !in badHero) badHero.add(v.id) }
+                }
+                // Petits points : quel film est affiché
+                if (heroOk.size > 1) Row(
+                    Modifier.align(Alignment.BottomEnd).padding(end = LocalPad.current, bottom = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    heroOk.forEachIndexed { i, _ ->
+                        val on = i == heroIdx % heroOk.size
+                        Box(Modifier.height(4.dp).width(if (on) 16.dp else 6.dp).background(if (on) C.Red else Color(0x66FFFFFF), RoundedCornerShape(2.dp)))
+                    }
+                }
+            }
+        }
         if (progress.isNotEmpty()) item {
             RowSection("Reprendre la lecture") {
                 items(progress, key = { it.key }) { p -> ProgressCard(m, p, cardW, vodsById, seriesById) }
