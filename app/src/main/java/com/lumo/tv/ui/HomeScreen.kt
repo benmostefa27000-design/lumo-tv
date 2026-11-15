@@ -2,6 +2,10 @@
 
 package com.lumo.tv.ui
 
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+
+import androidx.compose.ui.input.pointer.pointerInput
+
 import androidx.compose.ui.draw.clip
 import kotlinx.coroutines.launch
 
@@ -104,9 +108,13 @@ fun HomeScreen(m: AppModel) {
     var heroIdx by remember(heroList) { mutableIntStateOf(0) }
     var heroFocused by remember { mutableStateOf(false) }
     val hero = heroOk.getOrNull(heroIdx % heroOk.size.coerceAtLeast(1))
-    LaunchedEffect(heroList, heroFocused) {
+    var heroDir by remember { mutableIntStateOf(1) }
+    var heroTick by remember { mutableIntStateOf(0) }
+    // Le minuteur repart de zéro après un glissement au doigt
+    LaunchedEffect(heroList, heroFocused, heroTick) {
         while (heroOk.size > 1 && !heroFocused) {
             kotlinx.coroutines.delay(8000)
+            heroDir = 1
             heroIdx = (heroIdx + 1) % heroOk.size.coerceAtLeast(1)
         }
     }
@@ -139,8 +147,30 @@ fun HomeScreen(m: AppModel) {
             }
         }
         else if (hero != null) item {
-            Box(Modifier.onFocusChanged { heroFocused = it.hasFocus }) {
-                androidx.compose.animation.Crossfade(targetState = hero, animationSpec = androidx.compose.animation.core.tween(1000), label = "hero") { v ->
+            // Téléphone : défile tout seul, et on peut aussi faire glisser avec le doigt (gauche = suivant, droite = précédent)
+            var dragX by remember { mutableFloatStateOf(0f) }
+            Box(Modifier.onFocusChanged { heroFocused = it.hasFocus }.pointerInput(heroOk.size) {
+                detectHorizontalDragGestures(
+                    onDragStart = { dragX = 0f },
+                    onDragEnd = {
+                        val n = heroOk.size
+                        if (n > 1 && kotlin.math.abs(dragX) > 60f) {
+                            heroDir = if (dragX < 0) 1 else -1
+                            heroIdx = ((heroIdx + heroDir) % n + n) % n
+                            heroTick++
+                        }
+                        dragX = 0f
+                    },
+                    onDragCancel = { dragX = 0f }
+                ) { change, dx -> change.consume(); dragX += dx }
+            }) {
+                androidx.compose.animation.AnimatedContent(targetState = hero, label = "hero", transitionSpec = {
+                    val d = heroDir
+                    (androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(450)) { w -> d * w / 3 } +
+                        androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(450))) togetherWith
+                        (androidx.compose.animation.slideOutHorizontally(androidx.compose.animation.core.tween(450)) { w -> -d * w / 3 } +
+                            androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(350)))
+                }) { v ->
                     Hero(m, v) { if (v.id !in badHero) badHero.add(v.id) }
                 }
                 // Petits points : quel film est affiché
