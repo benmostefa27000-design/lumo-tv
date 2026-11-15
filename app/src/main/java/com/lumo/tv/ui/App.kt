@@ -1,5 +1,7 @@
 package com.lumo.tv.ui
 
+import androidx.compose.ui.draw.clip
+
 import androidx.compose.runtime.getValue
 
 import androidx.compose.ui.graphics.graphicsLayer
@@ -122,19 +124,42 @@ private fun TabContent(m: AppModel) {
 @Composable
 private fun TabBody(m: AppModel) {
     if (m.isTv) { TvCubeTabs(m); return }
-    // Téléphone : glissement dans le sens du changement + fondu
+    PhoneRevealTabs(m)
+}
+
+/** Téléphone : la nouvelle page s'ouvre en cercle qui grandit depuis l'icône touchée. */
+@Composable
+private fun PhoneRevealTabs(m: AppModel) {
+    val land = isPhoneLandscape(false)
+    val order = listOf(Tab.Home, Tab.Live, Tab.Movies, Tab.Series, Tab.Settings)
+    val landOrder = listOf(Tab.Home, Tab.Live, Tab.Movies, Tab.Series, Tab.MyList)
     androidx.compose.animation.AnimatedContent(
         targetState = m.tab,
         transitionSpec = {
-            val dir = if (targetState.ordinal > initialState.ordinal) 1 else -1
-            (androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(320)) { w -> dir * w / 5 } +
-                androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(320)) +
-                androidx.compose.animation.scaleIn(androidx.compose.animation.core.tween(320), initialScale = 0.97f)) togetherWith
-                (androidx.compose.animation.slideOutHorizontally(androidx.compose.animation.core.tween(240)) { w -> -dir * w / 5 } +
-                    androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(200)))
+            (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(520), initialAlpha = 0.999f) togetherWith
+                androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(520), targetAlpha = 0.35f)).apply { targetContentZIndex = 1f }
         },
-        label = "tabs"
-    ) { tab -> TabPage(m, tab) }
+        label = "reveal",
+        modifier = Modifier.fillMaxSize()
+    ) { tab ->
+        val prog by transition.animateFloat(
+            transitionSpec = { androidx.compose.animation.core.tween(520, easing = androidx.compose.animation.core.FastOutSlowInEasing) },
+            label = "revealP"
+        ) { st -> if (st == androidx.compose.animation.EnterExitState.PreEnter) 0f else 1f }
+        val entering = transition.targetState == androidx.compose.animation.EnterExitState.Visible && prog < 1f
+        val shape = remember(prog, tab, land) {
+            androidx.compose.foundation.shape.GenericShape { sz, _ ->
+                // Point de départ : l'icône de l'onglet (barre du bas, ou onglets du haut à l'horizontale)
+                val list = if (land) landOrder else order
+                val idx = list.indexOf(tab).let { if (it < 0) 2 else it }
+                val ox = if (land) sz.width * (0.08f + idx * 0.07f) else sz.width * (idx + 0.5f) / list.size
+                val oy = if (land) 0f else sz.height
+                val maxR = kotlin.math.hypot(maxOf(ox, sz.width - ox), maxOf(oy, sz.height - oy))
+                addOval(androidx.compose.ui.geometry.Rect(androidx.compose.ui.geometry.Offset(ox, oy), maxR * prog))
+            }
+        }
+        Box(Modifier.fillMaxSize().then(if (entering) Modifier.clip(shape) else Modifier).background(Color.Black)) { TabPage(m, tab) }
+    }
 }
 
 /** TV : les pages tournent comme les faces d'un cube, dans le sens de la flèche. */
