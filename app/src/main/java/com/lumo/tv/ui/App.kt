@@ -123,7 +123,7 @@ private fun TabContent(m: AppModel) {
 
 @Composable
 private fun TabBody(m: AppModel) {
-    if (m.isTv) { TvCubeTabs(m); return }
+    if (m.isTv) { TvSoftTabs(m); return }
     PhoneRevealTabs(m)
 }
 
@@ -160,6 +160,27 @@ private fun PhoneRevealTabs(m: AppModel) {
         }
         Box(Modifier.fillMaxSize().then(if (entering) Modifier.clip(shape) else Modifier).background(Color.Black)) { TabPage(m, tab) }
     }
+}
+
+/**
+ * TV : transition sobre — l'ancienne page s'efface vite, la nouvelle apparaît en fondu
+ * avec un très léger glissement dans le sens de la flèche (style Apple TV / Google TV).
+ */
+@Composable
+private fun TvSoftTabs(m: AppModel) {
+    androidx.compose.animation.AnimatedContent(
+        targetState = m.tab,
+        transitionSpec = {
+            val dir = if (targetState.ordinal > initialState.ordinal) 1 else -1
+            val ease = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f)
+            (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(380, delayMillis = 90, easing = ease)) +
+                androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(460, delayMillis = 60, easing = ease)) { w -> (dir * w * 0.04f).toInt() } +
+                androidx.compose.animation.scaleIn(androidx.compose.animation.core.tween(460, delayMillis = 60, easing = ease), initialScale = 0.985f)) togetherWith
+                androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(170))
+        },
+        label = "softTabs",
+        modifier = Modifier.fillMaxSize()
+    ) { tab -> TabPage(m, tab) }
 }
 
 /** TV : les pages tournent comme les faces d'un cube, dans le sens de la flèche. */
