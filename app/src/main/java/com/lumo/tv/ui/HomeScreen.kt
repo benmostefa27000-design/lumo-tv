@@ -1,5 +1,11 @@
 package com.lumo.tv.ui
 
+import androidx.compose.animation.togetherWith
+
+import androidx.compose.ui.graphics.Brush
+
+import androidx.compose.ui.draw.blur
+
 import androidx.compose.foundation.shape.RoundedCornerShape
 
 import androidx.compose.ui.focus.onFocusChanged
@@ -78,7 +84,7 @@ fun HomeScreen(m: AppModel) {
     val favSer = run { m.store.version; m.store.favs(m.pid, "series") }
     // Si l'affiche d'un film ne se charge pas, on passe au film suivant
     // Film en vedette : défile tout seul toutes les 8 s en fondu enchaîné (les films sans image sont sautés)
-    val heroList = remember(recentVods) { recentVods.filter { it.icon.isNotBlank() }.ifEmpty { recentVods }.take(10) }
+    val heroList = remember(recentVods) { recentVods.filter { it.icon.isNotBlank() }.ifEmpty { recentVods }.take(15) }
     val badHero = remember(heroList) { mutableStateListOf<String>() }
     val heroOk = heroList.filter { it.id !in badHero }.ifEmpty { heroList }
     var heroIdx by remember(heroList) { mutableIntStateOf(0) }
@@ -92,23 +98,8 @@ fun HomeScreen(m: AppModel) {
     }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
-        if (hero != null) item {
-            Box(Modifier.onFocusChanged { heroFocused = it.hasFocus }) {
-                androidx.compose.animation.Crossfade(targetState = hero, animationSpec = androidx.compose.animation.core.tween(1000), label = "hero") { v ->
-                    Hero(m, v) { if (v.id !in badHero) badHero.add(v.id) }
-                }
-                // Petits points : quel film est affiché
-                if (heroOk.size > 1) Row(
-                    Modifier.align(Alignment.BottomEnd).padding(end = LocalPad.current, bottom = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                ) {
-                    heroOk.forEachIndexed { i, _ ->
-                        val on = i == heroIdx % heroOk.size
-                        Box(Modifier.height(4.dp).width(if (on) 16.dp else 6.dp).background(if (on) C.Red else Color(0x66FFFFFF), RoundedCornerShape(2.dp)))
-                    }
-                }
-            }
-        }
+        if (heroList.size >= 3) item(key = "heroflow") { HeroFlow(m, heroList) }
+        else if (hero != null) item { Hero(m, hero) { if (hero.id !in badHero) badHero.add(hero.id) } }
         if (progress.isNotEmpty()) item {
             RowSection("Reprendre la lecture") {
                 items(progress, key = { it.key }) { p -> ProgressCard(m, p, cardW, vodsById, seriesById) }
@@ -123,15 +114,7 @@ fun HomeScreen(m: AppModel) {
             favSer.mapNotNull { seriesById[it] }.map { Triple(it.id, it.name, it.cover) to it }
         if (myList.isNotEmpty()) item(key = "mylist") { FlowOrRow(m, "Ma liste", "fav", myList.map { it.second }, cardW) }
         val anim = run { m.store.version; m.store.anim3d }
-        if (anim && recentVods.size >= 3) item(key = "flow") {
-            val flow = remember(recentVods) {
-                recentVods.take(25).map { v ->
-                    FlowItem(v.id, v.name, v.icon, listOfNotNull("Film", v.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { "★ %.1f".format(it) }).joinToString(" · "))
-                }
-            }
-            CoverFlow("Nouveautés", flow.map { it.copy(kind = "movie") }, m.isTv) { i -> m.go(Screen.MovieDetail(recentVods[i])) }
-        }
-        if (recentVods.isNotEmpty() && !anim) item {
+        if (recentVods.size > 10) item {
             RowSection("Films ajoutés récemment") {
                 items(recentVods, key = { "rv" + it.id }) { v -> PosterCard(v.name, v.icon, cardW, kind = "movie") { m.go(Screen.MovieDetail(v)) } }
             }
@@ -172,6 +155,64 @@ private fun FlowOrRow(m: AppModel, title: String, keyPrefix: String, objs: List<
                     is Vod -> PosterCard(o.name, o.icon, cardW, kind = "movie") { m.go(Screen.MovieDetail(o)) }
                     is Series -> PosterCard(o.name, o.cover, cardW, kind = "tv") { m.go(Screen.SeriesDetail(o)) }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Haut de l'accueil : « Nouveautés » en défilement 3D (effet iPad), qui défile tout seul.
+ * Derrière : la grande image du film au centre, en fondu ; dessous : titre et boutons.
+ */
+@Composable
+private fun HeroFlow(m: AppModel, films: List<Vod>) {
+    var cur by remember(films) { mutableIntStateOf(1.coerceAtMost(films.lastIndex)) }
+    val v = films[cur.coerceIn(0, films.lastIndex)]
+    val land = isPhoneLandscape(m.isTv)
+    val flow = remember(films) {
+        films.map { f -> FlowItem(f.id, f.name, f.icon, "", "movie") }
+    }
+    Box(Modifier.fillMaxWidth()) {
+        // Fond : grande image du film au centre, floutée et assombrie, en fondu enchaîné
+        androidx.compose.animation.Crossfade(targetState = v, animationSpec = androidx.compose.animation.core.tween(900), label = "heroBg", modifier = Modifier.matchParentSize()) { f ->
+            val art = rememberTmdbArt("movie", f.name)
+            val bg = art?.backdrop?.ifBlank { null } ?: art?.poster?.ifBlank { null } ?: f.icon
+            Box(Modifier.fillMaxSize()) {
+                if (bg.isNotBlank()) AsyncImage(
+                    model = bg, contentDescription = null, contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().then(if (android.os.Build.VERSION.SDK_INT >= 31) Modifier.blur(18.dp) else Modifier).graphicsLayer { alpha = 0.55f }
+                )
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0x99000000), Color(0x55000000), Color.Black))))
+            }
+        }
+        Column(Modifier.fillMaxWidth().padding(top = if (land) 0.dp else 6.dp)) {
+            CoverFlow(
+                title = null, items = flow, isTv = m.isTv, startIndex = cur,
+                width = if (m.isTv) 190.dp else if (land) 120.dp else 165.dp,
+                autoMs = 5000, showCaption = false, onCurrent = { cur = it }
+            ) { i -> m.go(Screen.MovieDetail(films[i])) }
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = LocalPad.current),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                androidx.compose.animation.AnimatedContent(targetState = v, label = "heroTitle", transitionSpec = {
+                    androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(500)) togetherWith androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(300))
+                }) { f ->
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(f.name, color = Color.White, fontSize = if (m.isTv) 30.sp else 24.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        f.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { Text("Film · ★ %.1f".format(it), color = C.Sub, fontSize = 13.sp) }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LumoButton("Lecture", icon = { Icon(Icons.Default.PlayArrow, null, tint = Color.Black) }) {
+                        m.go(Screen.Player(com.lumo.tv.Playable.Movie(v)))
+                    }
+                    LumoButton("Plus d'infos", primary = false, icon = { Icon(Icons.Default.Info, null, tint = Color.White) }) {
+                        m.go(Screen.MovieDetail(v))
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
             }
         }
     }

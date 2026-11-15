@@ -58,6 +58,9 @@ fun CoverFlow(
     width: androidx.compose.ui.unit.Dp? = null,
     focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
     card: (@Composable (FlowItem) -> Unit)? = null,
+    autoMs: Long = 0,
+    showCaption: Boolean = true,
+    onCurrent: ((Int) -> Unit)? = null,
     onOpen: (Int) -> Unit
 ) {
     if (items.isEmpty()) return
@@ -82,6 +85,16 @@ fun CoverFlow(
     fun goTo(i: Int) {
         scope.launch { pos.animateTo(i.coerceIn(0, last).toFloat(), spring(dampingRatio = 0.82f, stiffness = 260f)) }
     }
+    // Défilement automatique (en pause quand la télécommande est dessus)
+    var touchTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(autoMs, focused, items.size, touchTick) {
+        while (autoMs > 0 && !focused && last > 0) {
+            kotlinx.coroutines.delay(autoMs)
+            val c = pos.value.roundToInt()
+            pos.animateTo((if (c >= last) 0 else c + 1).toFloat(), androidx.compose.animation.core.tween(900, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+        }
+    }
+    LaunchedEffect(current) { onCurrent?.invoke(current) }
 
     Column(Modifier.fillMaxWidth().padding(top = 18.dp)) {
         if (title != null) SectionTitle(title, Modifier.padding(start = LocalPad.current, bottom = 4.dp))
@@ -105,7 +118,7 @@ fun CoverFlow(
                 .pointerInput(items.size) {
                     val tracker = VelocityTracker()
                     detectHorizontalDragGestures(
-                        onDragStart = { tracker.resetTracking(); scope.launch { pos.stop() } },
+                        onDragStart = { tracker.resetTracking(); touchTick++; scope.launch { pos.stop() } },
                         onDragEnd = {
                             val v = tracker.calculateVelocity().x
                             goTo((pos.value - v / near1 * 0.3f).roundToInt())
@@ -175,9 +188,9 @@ fun CoverFlow(
             }
         }
         val cur = items[current]
-        Text(cur.title, color = Color.White, fontSize = if (isTv) 26.sp else 22.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp))
-        if (cur.meta.isNotBlank()) Text(cur.meta, color = C.Sub, fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Center) {
+        if (showCaption) Text(cur.title, color = Color.White, fontSize = if (isTv) 26.sp else 22.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp))
+        if (showCaption && cur.meta.isNotBlank()) Text(cur.meta, color = C.Sub, fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+        if (showCaption) Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Center) {
             val start = (current - 6).coerceAtLeast(0)
             val end = (start + 12).coerceAtMost(last)
             for (k in start..end) {
