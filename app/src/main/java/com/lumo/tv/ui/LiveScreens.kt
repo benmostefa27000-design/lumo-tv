@@ -1,5 +1,13 @@
 package com.lumo.tv.ui
 
+import androidx.compose.ui.focus.focusRestorer
+
+import androidx.compose.ui.focus.focusRequester
+
+import androidx.compose.foundation.focusGroup
+
+import androidx.compose.ui.focus.focusProperties
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -71,8 +79,16 @@ fun LiveScreen(m: AppModel) {
     val catItems = listOf(FAV to "★ Favoris") + (if (hasReplay) listOf(REPLAY to "⟲ Rattrapage") else emptyList()) + cats.map { it.id to it.name }
 
     if (m.isTv) {
-        Row(Modifier.fillMaxSize().padding(start = 40.dp, end = 40.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            LazyColumn(Modifier.width(250.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+        // En descendant depuis les onglets, on arrive d'abord sur les catégories (pas directement sur les chaînes)
+        val catFr = remember { androidx.compose.ui.focus.FocusRequester() }
+        @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+        Row(
+            Modifier.fillMaxSize().padding(start = 40.dp, end = 40.dp, top = 8.dp)
+                .focusProperties { enter = { catFr } }.focusGroup(),
+            horizontalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+            LazyColumn(Modifier.width(250.dp).fillMaxHeight().focusRequester(catFr).focusRestorer().focusGroup(), verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
                 item(key = "__sort") { Chip(sortLabel, false) { nextSort() } }
                 items(catItems, key = { it.first }) { (id, name) ->
                     FocusBox(modifier = Modifier.fillMaxWidth(), scale = 1.03f, onClick = { sel = id }) { f ->

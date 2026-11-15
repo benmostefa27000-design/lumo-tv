@@ -683,11 +683,18 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     val sub = if (item is Playable.Live && cur != null) "En direct · ${cur.title}" else r.subtitle
                     if (sub.isNotBlank()) Text(sub, color = C.Sub, fontSize = 14.sp, maxLines = 2, lineHeight = 17.sp, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
-                if (m.isTv) {
-                    Text(
-                        "OK : pause · Menu ou OK long : options" + if (item is Playable.Live) " · ▲▼ : chaînes" else " · ◀▶ : −10 s / +30 s",
-                        color = C.Sub, fontSize = 13.sp
-                    )
+                if (m.isTv && !tvMenu) {
+                    // TV : les mêmes icônes que sur le téléphone ; Menu (ou OK long) pour les utiliser
+                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            if (item is Playable.Ep) { StaticPill { drawArrow(-1) }; StaticPill { drawArrow(1) } }
+                            if (item !is Playable.Live) StaticPill { drawSubtitles() }
+                            StaticPill(active = videoMode != 0) { drawAspect() }
+                            StaticPill(active = avDelay != 0) { drawSync() }
+                            if (item is Playable.Live && (item as Playable.Live).list.size > 1) StaticPill { drawChannels() }
+                        }
+                        Text("Menu ou OK long : options" + if (item is Playable.Live) " · ▲▼ : chaînes" else " · ◀▶ : −10 s / +30 s", color = C.Dim, fontSize = 12.sp)
+                    }
                 }
                 // Téléphone : boutons ronds avec icônes (Chaînes tout à droite)
                 if (!m.isTv) {
@@ -932,8 +939,8 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             val ep = item as? Playable.Ep
             val live = item as? Playable.Live
             Row(
-                Modifier.align(Alignment.TopEnd).padding(top = 80.dp, end = 32.dp)
-                    .background(Color(0xE6141414), RoundedCornerShape(16.dp)).padding(horizontal = 18.dp, vertical = 14.dp),
+                Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 16.dp)
+                    .background(Color(0xE6141414), RoundedCornerShape(16.dp)).padding(horizontal = 18.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(18.dp)
             ) {
                 var first = true
@@ -1107,4 +1114,12 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawArrow(dir: Int)
     val backX = if (dir > 0) w * 0.36f else w * 0.64f
     drawLine(Color.White, androidx.compose.ui.geometry.Offset(backX, h * 0.2f), androidx.compose.ui.geometry.Offset(tipX, h * 0.5f), strokeWidth = sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
     drawLine(Color.White, androidx.compose.ui.geometry.Offset(tipX, h * 0.5f), androidx.compose.ui.geometry.Offset(backX, h * 0.8f), strokeWidth = sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+}
+
+/** Icône ronde d'affichage seul (TV, hors menu). */
+@Composable
+private fun StaticPill(active: Boolean = false, icon: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit) {
+    Box(Modifier.size(42.dp).background(if (active) C.Red.copy(alpha = 0.85f) else Color(0x55FFFFFF), androidx.compose.foundation.shape.CircleShape), contentAlignment = Alignment.Center) {
+        androidx.compose.foundation.Canvas(Modifier.size(22.dp)) { icon() }
+    }
 }
