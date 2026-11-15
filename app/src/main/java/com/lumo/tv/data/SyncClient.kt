@@ -44,15 +44,17 @@ class SyncClient(private val base: String, private val http: OkHttpClient) {
 
     // ---------- Connexion d'une TV par code ----------
 
-    fun publishPairing(code: String, acc: Account) {
-        put("pair/$code", acc.toJson().put("ts", System.currentTimeMillis()))
+    fun publishPairing(code: String, acc: Account, syncKey: String = "") {
+        put("pair/$code", acc.toJson().put("sync", syncKey).put("ts", System.currentTimeMillis()))
     }
 
-    fun takePairing(code: String): Account? {
+    /** Compte + identifiant de synchro envoyés par le téléphone. */
+    fun takePairing(code: String): Pair<Account, String>? {
         val o = getObject("pair/$code") ?: return null
         val ts = o.optLong("ts")
         try { delete("pair/$code") } catch (_: Exception) { }
         if (System.currentTimeMillis() - ts > 15 * 60 * 1000) return null
-        return Account.fromJson(o)
+        val a = Account.fromJson(o) ?: return null
+        return a to o.optString("sync")
     }
 }

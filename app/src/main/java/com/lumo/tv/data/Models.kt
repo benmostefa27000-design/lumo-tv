@@ -209,3 +209,7 @@ fun cleanEpisodeTitle(title: String, seriesName: String): String {
     t = t.replace(Regex("""^[\s\-–|:.]*"""), "")
     return t
 }
+
+
+/** Une source IPTV (abonnement Xtream ou lien M3U) enregistrée dans l'appli. */
+data class Source(val id: String, val name: String, val account: Account)

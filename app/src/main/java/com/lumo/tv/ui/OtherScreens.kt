@@ -132,6 +132,11 @@ fun SettingsScreen(m: AppModel) {
         item { Text("Réglages", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp)) }
         item { SettingRow("Changer de profil", m.profile?.name + if (m.kidsMode) " · profil Enfants" else "") { m.openProfiles() } }
         if (m.kidsMode) return@LazyColumn
+        item {
+            val n = m.sources.size
+            val cur = m.sources.firstOrNull { it.account.key() == m.activeSourceKey }?.name
+            SettingRow("Sources", (if (cur != null) "En cours : $cur" else "Ton abonnement") + if (n > 1) " · $n sources" else " · ajouter un autre abonnement") { m.go(Screen.Sources) }
+        }
         item { SettingRow("Gérer les catégories", "Tout sélectionner, supprimer, restaurer") { m.go(Screen.Categories) } }
         if (!m.isTv) item { SettingRow("Connecter une TV", "Avec le code ou le QR code affiché sur la TV") { m.go(Screen.PairPhone) } }
         if (!m.isTv) item {

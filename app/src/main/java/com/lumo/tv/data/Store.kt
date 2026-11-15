@@ -26,6 +26,39 @@ class Store(context: Context) {
         JSONObject()
     }
 
+    /** Identifiant de synchro : fixé à la première connexion, il ne change pas quand on change de source. */
+    var syncKey: String
+        get() = prefs.getString("syncKey", null)?.takeIf { it.isNotBlank() } ?: (account?.key() ?: "")
+        set(v) { prefs.edit().putString("syncKey", v).apply() }
+
+    /** Sources enregistrées (synchronisées entre appareils). */
+    fun sources(): List<Source> {
+        val items = doc.optJSONObject("sources")?.optJSONObject("items") ?: return emptyList()
+        return items.keys().asSequence().mapNotNull { id ->
+            val o = items.optJSONObject(id) ?: return@mapNotNull null
+            val a = Account.fromJson(o) ?: return@mapNotNull null
+            Source(id, o.optString("name").ifBlank { a.server }, a) to o.optLong("order")
+        }.sortedBy { it.second }.map { it.first }.toList()
+    }
+
+    fun saveSource(src: Source): Change {
+        val sec = obj(doc, "sources")
+        val items = obj(sec, "items")
+        val order = items.optJSONObject(src.id)?.optLong("order") ?: System.currentTimeMillis()
+        items.put(src.id, src.account.toJson().put("name", src.name).put("order", order))
+        sec.put("ts", now())
+        save()
+        return Change("sources", JSONObject(sec.toString()))
+    }
+
+    fun removeSource(id: String): Change {
+        val sec = obj(doc, "sources")
+        obj(sec, "items").remove(id)
+        sec.put("ts", now())
+        save()
+        return Change("sources", JSONObject(sec.toString()))
+    }
+
     var account: Account?
         get() = try { Account.fromJson(JSONObject(prefs.getString("account", "") ?: "")) } catch (e: Exception) { null }
         set(v) { prefs.edit().putString("account", v?.toJson()?.toString() ?: "").apply(); version++ }
@@ -259,6 +292,7 @@ class Store(context: Context) {
         lww("cats", doc.optJSONObject("cats"), remote.optJSONObject("cats")) { doc.put("cats", it) }
         lww("profiles", doc.optJSONObject("profiles"), remote.optJSONObject("profiles")) { doc.put("profiles", it) }
         lww("settings", doc.optJSONObject("settings"), remote.optJSONObject("settings")) { doc.put("settings", it) }
+        lww("sources", doc.optJSONObject("sources"), remote.optJSONObject("sources")) { doc.put("sources", it) }
 
         val rp = remote.optJSONObject("p") ?: JSONObject()
         val lp = obj(doc, "p")

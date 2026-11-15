@@ -81,7 +81,9 @@ fun HomeScreen(m: AppModel) {
     val byCat = remember(vods) { vods.groupBy { it.catId } }
     val serByCat = remember(series) { series.groupBy { it.catId } }
     // Un seul élément par film (même titre) et par série (dernier épisode regardé)
+    // Seulement ce qui existe dans la source en cours (une reprise d'une autre source ne marcherait pas ici)
     val progress = m.progressList().filter { !it.finished }
+        .filter { p -> if (m.vods.isEmpty()) true else if (p.kind == "ep") p.parentId in seriesById else p.itemId in vodsById }
         .distinctBy { if (it.kind == "ep" && it.parentId.isNotBlank()) "s" + it.parentId else "v" + it.title.lowercase().filter { c -> c.isLetterOrDigit() } }
         .take(30)
     val favVod = run { m.store.version; m.store.favs(m.pid, "vod") }

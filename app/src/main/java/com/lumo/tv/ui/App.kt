@@ -52,6 +52,7 @@ fun LumoApp(m: AppModel) {
                 is Screen.Player -> PlayerScreen(m, s.item)
                 Screen.Search -> SearchScreen(m)
                 Screen.Categories -> CategoriesScreen(m)
+                Screen.Sources -> SourcesScreen(m)
                 Screen.DeletedCategories -> DeletedCategoriesScreen(m)
                 Screen.PairPhone -> PairPhoneScreen(m)
                 Screen.PinCheck -> PinCheckScreen(m)

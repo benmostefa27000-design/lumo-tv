@@ -38,6 +38,7 @@ sealed interface Screen {
     data class Player(val item: Playable) : Screen
     data object Search : Screen
     data object Categories : Screen
+    data object Sources : Screen
     data object DeletedCategories : Screen
     data object PairPhone : Screen
     data object PinCheck : Screen
@@ -136,8 +137,11 @@ class AppModel(private val context: Context) {
             val p = profile
             stack.add(if (p != null && p.kids && store.pin().isNotEmpty()) Screen.Main else Screen.Profiles)
             loadCatalog(false)
+            if (prefsSyncKeyMissing()) store.syncKey = acc.key()
             scope.launch(Dispatchers.IO) {
                 try { val a = client?.auth(); withContext(Dispatchers.Main) { auth = a } } catch (_: Exception) { }
+                syncNow()
+                withContext(Dispatchers.Main) { ensureSourceRegistered(acc) }
             }
         }
         startSyncLoop()
@@ -169,11 +173,15 @@ class AppModel(private val context: Context) {
             val a = c.auth()
             if (!a.ok) return@withContext a.message
             withContext(Dispatchers.Main) {
+                if (store.syncKey.isBlank() || store.account == null) {
+                    if (prefsSyncKeyMissing()) store.syncKey = acc.key()
+                }
                 store.account = acc
                 client = c
                 auth = a
             }
             syncNow()
+            withContext(Dispatchers.Main) { ensureSourceRegistered(acc) }
             withContext(Dispatchers.Main) {
                 if (store.profiles().isEmpty()) {
                     commit(store.saveProfile(Profile("p_${System.currentTimeMillis()}", "Profil 1", 0xFF2F6FD6, false, 0)))
@@ -185,6 +193,61 @@ class AppModel(private val context: Context) {
         } catch (e: Exception) {
             "Connexion impossible : ${e.message ?: "erreur réseau"}"
         }
+    }
+
+    private fun prefsSyncKeyMissing(): Boolean =
+        context.getSharedPreferences("lumo", Context.MODE_PRIVATE).getString("syncKey", null).isNullOrBlank()
+
+    // ---------- Sources (plusieurs abonnements, une à la fois) ----------
+
+    val sources: List<Source> get() { store.version; return store.sources() }
+    val activeSourceKey: String get() { store.version; return store.account?.key() ?: "" }
+
+    /** La source en cours est ajoutée à la liste si elle n'y est pas encore. */
+    fun ensureSourceRegistered(acc: Account) {
+        if (store.sources().none { it.account.key() == acc.key() }) {
+            val name = auth?.let { "Abonnement principal" } ?: "Abonnement"
+            commit(store.saveSource(Source("s_" + acc.key().take(10), if (store.sources().isEmpty()) name else acc.server.substringAfter("//").substringBefore(":"), acc)))
+        }
+    }
+
+    /** Ajoute une source après avoir vérifié qu'elle fonctionne. Renvoie un message d'erreur, ou null. */
+    suspend fun addSource(name: String, acc: Account): String? = withContext(Dispatchers.IO) {
+        try {
+            val a = XtreamClient(acc, http, context.cacheDir).auth()
+            if (!a.ok) return@withContext a.message
+            withContext(Dispatchers.Main) {
+                commit(store.saveSource(Source("s_" + acc.key().take(10), name.ifBlank { acc.server.substringAfter("//").substringBefore(":") }, acc)))
+            }
+            null
+        } catch (e: Exception) { "Connexion impossible : ${e.message ?: "erreur réseau"}" }
+    }
+
+    fun removeSource(src: Source) {
+        if (src.account.key() == activeSourceKey) { showToast("C'est la source en cours : passe d'abord sur une autre"); return }
+        commit(store.removeSource(src.id))
+    }
+
+    /** Passe sur une autre source : le catalogue est rechargé, profils/favoris/synchro restent. */
+    suspend fun switchSource(src: Source): String? = withContext(Dispatchers.IO) {
+        try {
+            val c = XtreamClient(src.account, http, context.cacheDir)
+            val a = c.auth()
+            if (!a.ok) return@withContext a.message
+            withContext(Dispatchers.Main) {
+                store.account = src.account
+                client = c
+                auth = a
+                live = emptyList(); vods = emptyList(); series = emptyList()
+                liveCats = emptyList(); vodCats = emptyList(); seriesCats = emptyList()
+                nowPlaying.clear()
+                tab = Tab.Home
+                reset(Screen.Main)
+                loadCatalog(true)
+                showToast("Source : ${src.name}")
+            }
+            null
+        } catch (e: Exception) { "Connexion impossible : ${e.message ?: "erreur réseau"}" }
     }
 
     fun logout() {
@@ -295,10 +358,10 @@ class AppModel(private val context: Context) {
     // ---------- Données synchronisées ----------
 
     fun commit(c: Change) {
-        val acc = store.account ?: return
+        val sk = store.syncKey.ifBlank { return }
         if (!sync.enabled) return
         scope.launch(Dispatchers.IO) {
-            try { sync.apply(acc.key(), c) } catch (_: Exception) { }
+            try { sync.apply(sk, c) } catch (_: Exception) { }
         }
     }
 
@@ -366,15 +429,15 @@ class AppModel(private val context: Context) {
     }
 
     suspend fun syncNow() {
-        val acc = store.account ?: return
+        val sk = store.syncKey.ifBlank { return }
         if (!sync.enabled) return
         withContext(Dispatchers.IO) {
             try {
-                val remote = sync.getObject("lumo/${acc.key()}") ?: JSONObject()
+                val remote = sync.getObject("lumo/$sk") ?: JSONObject()
                 val push = withContext(Dispatchers.Main) { store.merge(remote) }
-                push.forEach { sync.apply(acc.key(), it) }
+                push.forEach { sync.apply(sk, it) }
                 val devName = (if (isTv) "TV " else "") + android.os.Build.MODEL
-                sync.put("lumo/${acc.key()}/devices/${store.deviceId}", JSONObject().put("name", devName).put("tv", isTv).put("ts", System.currentTimeMillis()))
+                sync.put("lumo/$sk/devices/${store.deviceId}", JSONObject().put("name", devName).put("tv", isTv).put("ts", System.currentTimeMillis()))
                 store.lastSync = System.currentTimeMillis()
                 withContext(Dispatchers.Main) { syncState = "OK" }
             } catch (e: Exception) {
@@ -404,8 +467,10 @@ class AppModel(private val context: Context) {
         if (!sync.enabled) return@withContext false
         val start = System.currentTimeMillis()
         while (isActive && System.currentTimeMillis() - start < 10 * 60 * 1000) {
-            val acc = try { sync.takePairing(code) } catch (_: Exception) { null }
-            if (acc != null) {
+            val got = try { sync.takePairing(code) } catch (_: Exception) { null }
+            if (got != null) {
+                val (acc, sk) = got
+                if (sk.isNotBlank()) store.syncKey = sk
                 val err = login(acc)
                 return@withContext err == null
             }
@@ -419,7 +484,7 @@ class AppModel(private val context: Context) {
         if (!sync.enabled) return@withContext "Synchro désactivée"
         val clean = code.uppercase().filter { it.isLetterOrDigit() }
         if (clean.length != 6) return@withContext "Le code fait 6 caractères"
-        try { sync.publishPairing(clean, acc); null } catch (e: Exception) { "Envoi impossible : ${e.message}" }
+        try { sync.publishPairing(clean, acc, store.syncKey); null } catch (e: Exception) { "Envoi impossible : ${e.message}" }
     }
 
     // ---------- Programme en cours (guide) ----------
@@ -494,7 +559,7 @@ class AppModel(private val context: Context) {
         val acc = store.account ?: return@withContext emptyList()
         if (!sync.enabled) return@withContext emptyList()
         try {
-            val o = sync.getObject("lumo/${acc.key()}/devices") ?: return@withContext emptyList()
+            val o = sync.getObject("lumo/${store.syncKey}/devices") ?: return@withContext emptyList()
             val now = System.currentTimeMillis()
             o.keys().asSequence().mapNotNull { id ->
                 val d = o.optJSONObject(id) ?: return@mapNotNull null
@@ -507,7 +572,7 @@ class AppModel(private val context: Context) {
     suspend fun sendCommand(tvId: String, cmd: JSONObject): Boolean = withContext(Dispatchers.IO) {
         val acc = store.account ?: return@withContext false
         try {
-            sync.put("lumo/${acc.key()}/cmd/$tvId", cmd.put("ts", System.currentTimeMillis()).put("profile", pid))
+            sync.put("lumo/${store.syncKey}/cmd/$tvId", cmd.put("ts", System.currentTimeMillis()).put("profile", pid))
             true
         } catch (_: Exception) { false }
     }
@@ -518,7 +583,7 @@ class AppModel(private val context: Context) {
         if (!sync.enabled) return 0
         val ids = withContext(Dispatchers.IO) {
             try {
-                val o = sync.getObject("lumo/${acc.key()}/devices") ?: return@withContext emptyList<String>()
+                val o = sync.getObject("lumo/${store.syncKey}/devices") ?: return@withContext emptyList<String>()
                 val now = System.currentTimeMillis()
                 o.keys().asSequence().filter { id ->
                     val d = o.optJSONObject(id)
@@ -540,7 +605,7 @@ class AppModel(private val context: Context) {
             while (isActive) {
                 val acc = store.account
                 if (acc == null) { delay(5000); continue }
-                val path = "lumo/${acc.key()}/cmd/${store.deviceId}"
+                val path = "lumo/${store.syncKey}/cmd/${store.deviceId}"
                 try {
                     val req = Request.Builder().url("${BuildConfig.SYNC_URL}/$path.json").header("Accept", "text/event-stream").build()
                     streamHttp.newCall(req).execute().use { r ->
