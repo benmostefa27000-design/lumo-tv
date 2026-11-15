@@ -10,6 +10,8 @@ import android.view.WindowManager
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -674,47 +676,22 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                         "OK : pause · Menu ou OK long : son, image et minuteur" + if (item is Playable.Live) " · ▲▼ : chaînes" else " · ◀▶ : −10 s / +30 s",
                         color = C.Sub, fontSize = 13.sp
                     )
-                } else if (item is Playable.Live && (item as Playable.Live).list.size > 1) {
-                    com.lumo.tv.ui.FocusBox(shape = RoundedCornerShape(50), scale = 1.06f, onClick = { chanList = !chanList }) { _ ->
-                        Text(
-                            "☰ Chaînes", color = Color.White, fontSize = 14.sp,
-                            modifier = Modifier.background(Color(0x55FFFFFF), RoundedCornerShape(50)).padding(horizontal = 14.dp, vertical = 8.dp)
-                        )
-                    }
                 }
-                if (!m.isTv && item !is Playable.Live) com.lumo.tv.ui.FocusBox(shape = RoundedCornerShape(50), scale = 1.06f, onClick = { subsPanel = !subsPanel }) { _ ->
-                    Text(
-                        "Sous-titres", color = Color.White, fontSize = 14.sp,
-                        modifier = Modifier.background(Color(0x55FFFFFF), RoundedCornerShape(50)).padding(horizontal = 14.dp, vertical = 8.dp)
-                    )
-                }
-                if (!m.isTv) com.lumo.tv.ui.FocusBox(shape = RoundedCornerShape(50), scale = 1.06f, onClick = { nextVideoMode() }) { _ ->
-                    Text(
-                        "⤢ " + modeNames[videoMode], color = Color.White, fontSize = 14.sp,
-                        modifier = Modifier.background(Color(0x55FFFFFF), RoundedCornerShape(50)).padding(horizontal = 14.dp, vertical = 8.dp)
-                    )
-                }
-                if (!m.isTv) com.lumo.tv.ui.FocusBox(shape = RoundedCornerShape(50), scale = 1.06f, onClick = { panel = !panel }) { _ ->
-                    Text(
-                        if (avDelay == 0) "Synchro son" else "Son ${if (avDelay > 0) "+" else ""}$avDelay ms",
-                        color = Color.White, fontSize = 14.sp,
-                        modifier = Modifier.background(Color(0x55FFFFFF), RoundedCornerShape(50)).padding(horizontal = 14.dp, vertical = 8.dp)
-                    )
-                }
-                val left = sleepAt?.let { ((it - clock) / 60000).coerceAtLeast(0) }
-                if (!m.isTv) com.lumo.tv.ui.FocusBox(shape = RoundedCornerShape(50), scale = 1.06f, onClick = {
-                    val steps = listOf<Long?>(30, 60, 90, null)
-                    val cur = left?.let { l -> steps.firstOrNull { st -> st != null && st >= l + 1 } }
-                    val idx = if (sleepAt == null) 0 else (steps.indexOf(cur) + 1).coerceAtMost(steps.lastIndex)
-                    sleepAt = steps[idx]?.let { min -> System.currentTimeMillis() + min * 60_000 }
-                    clock = System.currentTimeMillis()
-                    m.showToast(if (sleepAt == null) "Minuteur coupé" else "Arrêt dans ${steps[idx]} min")
-                }) { _ ->
-                    Text(
-                        if (left == null) "Minuteur" else "Arrêt dans $left min",
-                        color = Color.White, fontSize = 14.sp,
-                        modifier = Modifier.background(Color(0x55FFFFFF), RoundedCornerShape(50)).padding(horizontal = 14.dp, vertical = 8.dp)
-                    )
+                // Téléphone : boutons ronds avec icônes (Chaînes tout à droite)
+                if (!m.isTv) {
+                    if (item !is Playable.Live) IconPill("Sous-titres", onClick = { subsPanel = !subsPanel }) { drawSubtitles() }
+                    IconPill("Image : " + modeNames[videoMode], active = videoMode != 0, onClick = { nextVideoMode() }) { drawAspect() }
+                    IconPill("Synchro du son", active = avDelay != 0, onClick = { panel = !panel }) { drawSync() }
+                    val left = sleepAt?.let { ((it - clock) / 60000).coerceAtLeast(0) }
+                    IconPill("Minuteur", active = left != null, badge = left?.let { "$it" }, onClick = {
+                        val steps = listOf<Long?>(30, 60, 90, null)
+                        val cur = left?.let { l -> steps.firstOrNull { st -> st != null && st >= l + 1 } }
+                        val idx = if (sleepAt == null) 0 else (steps.indexOf(cur) + 1).coerceAtMost(steps.lastIndex)
+                        sleepAt = steps[idx]?.let { min -> System.currentTimeMillis() + min * 60_000 }
+                        clock = System.currentTimeMillis()
+                        m.showToast(if (sleepAt == null) "Minuteur coupé" else "Arrêt dans ${steps[idx]} min")
+                    }) { drawTimer() }
+                    if (item is Playable.Live && (item as Playable.Live).list.size > 1) IconPill("Chaînes", active = chanList, onClick = { chanList = !chanList }) { drawChannels() }
                 }
             }
         }
@@ -1013,4 +990,75 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             }
         }
     }
+}
+
+
+/** Bouton rond du lecteur (téléphone) avec une icône dessinée ; petit chiffre en option. */
+@Composable
+private fun IconPill(label: String, active: Boolean = false, badge: String? = null, onClick: () -> Unit, icon: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit) {
+    com.lumo.tv.ui.FocusBox(shape = androidx.compose.foundation.shape.CircleShape, scale = 1.08f, onClick = onClick) { _ ->
+        Box(
+            Modifier.size(46.dp).background(if (active) C.Red.copy(alpha = 0.85f) else Color(0x55FFFFFF), androidx.compose.foundation.shape.CircleShape)
+                .semantics { contentDescription = label },
+            contentAlignment = Alignment.Center
+        ) {
+            androidx.compose.foundation.Canvas(Modifier.size(24.dp)) { icon() }
+            if (badge != null) Text(
+                badge, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 1.dp)
+            )
+        }
+    }
+}
+
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawChannels() {
+    val w = size.width; val h = size.height
+    for (i in 0..2) {
+        val y = h * (0.25f + i * 0.25f)
+        drawCircle(Color.White, radius = w * 0.06f, center = androidx.compose.ui.geometry.Offset(w * 0.14f, y))
+        drawLine(Color.White, androidx.compose.ui.geometry.Offset(w * 0.32f, y), androidx.compose.ui.geometry.Offset(w * 0.9f, y), strokeWidth = w * 0.09f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawTimer() {
+    val w = size.width
+    val c = androidx.compose.ui.geometry.Offset(w / 2, size.height * 0.55f)
+    drawCircle(Color.White, radius = w * 0.38f, center = c, style = androidx.compose.ui.graphics.drawscope.Stroke(w * 0.09f))
+    drawLine(Color.White, c, androidx.compose.ui.geometry.Offset(c.x, c.y - w * 0.22f), strokeWidth = w * 0.09f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+    drawLine(Color.White, c, androidx.compose.ui.geometry.Offset(c.x + w * 0.15f, c.y + w * 0.08f), strokeWidth = w * 0.09f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+    drawLine(Color.White, androidx.compose.ui.geometry.Offset(w * 0.38f, size.height * 0.06f), androidx.compose.ui.geometry.Offset(w * 0.62f, size.height * 0.06f), strokeWidth = w * 0.09f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+}
+
+/** Synchro du son : barres d'égaliseur. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSync() {
+    val w = size.width; val h = size.height
+    val hs = listOf(0.35f, 0.75f, 0.5f, 0.9f, 0.45f)
+    hs.forEachIndexed { i, f ->
+        val x = w * (0.12f + i * 0.19f)
+        drawLine(Color.White, androidx.compose.ui.geometry.Offset(x, h * (0.5f - f / 2)), androidx.compose.ui.geometry.Offset(x, h * (0.5f + f / 2)), strokeWidth = w * 0.1f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+    }
+}
+
+/** Format de l'image : cadre avec coins. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawAspect() {
+    val w = size.width; val h = size.height
+    val sw = w * 0.09f
+    drawRoundRect(Color.White, topLeft = androidx.compose.ui.geometry.Offset(w * 0.05f, h * 0.2f), size = androidx.compose.ui.geometry.Size(w * 0.9f, h * 0.6f),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.1f), style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
+    // flèches dans les coins
+    drawLine(Color.White, androidx.compose.ui.geometry.Offset(w * 0.25f, h * 0.36f), androidx.compose.ui.geometry.Offset(w * 0.25f, h * 0.5f), strokeWidth = sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+    drawLine(Color.White, androidx.compose.ui.geometry.Offset(w * 0.25f, h * 0.36f), androidx.compose.ui.geometry.Offset(w * 0.4f, h * 0.36f), strokeWidth = sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+    drawLine(Color.White, androidx.compose.ui.geometry.Offset(w * 0.75f, h * 0.64f), androidx.compose.ui.geometry.Offset(w * 0.75f, h * 0.5f), strokeWidth = sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+    drawLine(Color.White, androidx.compose.ui.geometry.Offset(w * 0.75f, h * 0.64f), androidx.compose.ui.geometry.Offset(w * 0.6f, h * 0.64f), strokeWidth = sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+}
+
+/** Sous-titres : bulle rectangulaire avec deux lignes de texte. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSubtitles() {
+    val w = size.width; val h = size.height
+    val sw = w * 0.09f
+    drawRoundRect(Color.White, topLeft = androidx.compose.ui.geometry.Offset(w * 0.05f, h * 0.18f), size = androidx.compose.ui.geometry.Size(w * 0.9f, h * 0.64f),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.1f), style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
+    drawLine(Color.White, androidx.compose.ui.geometry.Offset(w * 0.22f, h * 0.45f), androidx.compose.ui.geometry.Offset(w * 0.78f, h * 0.45f), strokeWidth = sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+    drawLine(Color.White, androidx.compose.ui.geometry.Offset(w * 0.22f, h * 0.62f), androidx.compose.ui.geometry.Offset(w * 0.6f, h * 0.62f), strokeWidth = sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
 }
