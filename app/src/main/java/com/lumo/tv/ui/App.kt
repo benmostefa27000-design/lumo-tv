@@ -1,5 +1,7 @@
 package com.lumo.tv.ui
 
+import androidx.compose.animation.togetherWith
+
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 
@@ -113,7 +115,24 @@ private fun TabContent(m: AppModel) {
 
 @Composable
 private fun TabBody(m: AppModel) {
-    when (m.tab) {
+    // Animation entre les onglets : glissement dans le sens du changement + fondu
+    androidx.compose.animation.AnimatedContent(
+        targetState = m.tab,
+        transitionSpec = {
+            val dir = if (targetState.ordinal > initialState.ordinal) 1 else -1
+            (androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(320)) { w -> dir * w / 5 } +
+                androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(320)) +
+                androidx.compose.animation.scaleIn(androidx.compose.animation.core.tween(320), initialScale = 0.97f)) togetherWith
+                (androidx.compose.animation.slideOutHorizontally(androidx.compose.animation.core.tween(240)) { w -> -dir * w / 5 } +
+                    androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(200)))
+        },
+        label = "tabs"
+    ) { tab -> TabPage(m, tab) }
+}
+
+@Composable
+private fun TabPage(m: AppModel, tab: Tab) {
+    when (tab) {
         Tab.Home -> HomeScreen(m)
         Tab.Live -> LiveScreen(m)
         Tab.Movies -> VodBrowser(m, series = false)
