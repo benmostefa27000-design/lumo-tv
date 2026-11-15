@@ -687,12 +687,24 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     if (sub.isNotBlank()) Text(sub, color = C.Sub, fontSize = 14.sp, maxLines = 2, lineHeight = 17.sp, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
                 // Téléphone : boutons ronds avec icônes (Chaînes tout à droite)
-                if (!m.isTv) {
-                    if (item !is Playable.Live) IconPill("Sous-titres", onClick = { subsPanel = !subsPanel }) { drawSubtitles() }
+                // (en direct, elles sont en bas à droite pour ne pas cacher le logo de la chaîne)
+                if (!m.isTv && item !is Playable.Live) {
+                    IconPill("Sous-titres", onClick = { subsPanel = !subsPanel }) { drawSubtitles() }
                     IconPill("Image : " + modeNames[videoMode], active = videoMode != 0, onClick = { nextVideoMode() }) { drawAspect() }
                     IconPill("Synchro du son", active = avDelay != 0, onClick = { panel = !panel }) { drawSync() }
-                    if (item is Playable.Live && (item as Playable.Live).list.size > 1) IconPill("Chaînes", active = chanList, onClick = { chanList = !chanList }) { drawChannels() }
                 }
+            }
+        }
+
+        // Téléphone, en direct : icônes en bas à droite (le logo de la chaîne est souvent en haut à droite)
+        if (!m.isTv && !m.pip && item is Playable.Live && uiVisible && errorMsg == null && !chanList) {
+            Row(
+                Modifier.align(Alignment.BottomEnd).padding(end = 18.dp, bottom = 18.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                IconPill("Image : " + modeNames[videoMode], active = videoMode != 0, onClick = { nextVideoMode() }) { drawAspect() }
+                IconPill("Synchro du son", active = avDelay != 0, onClick = { panel = !panel }) { drawSync() }
+                if ((item as Playable.Live).list.size > 1) IconPill("Chaînes", active = chanList, onClick = { chanList = !chanList }) { drawChannels() }
             }
         }
 
@@ -868,7 +880,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             val listState = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = (live.index - 2).coerceAtLeast(0))
             Box(Modifier.fillMaxSize().background(Color(0x66000000)).tapToClose { chanList = false })
             androidx.compose.foundation.lazy.LazyColumn(
-                Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(300.dp).background(Color(0xF0141414)),
+                Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(if (m.isTv) 420.dp else 360.dp).background(Color(0xF0141414)),
                 state = listState,
                 contentPadding = PaddingValues(vertical = 12.dp)
             ) {
@@ -886,7 +898,13 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     ) {
                         Text("${i + 1}", color = C.Dim, fontSize = 12.sp, modifier = Modifier.width(28.dp))
                         if (ch.icon.isNotBlank()) coil.compose.AsyncImage(model = ch.icon, contentDescription = null, modifier = Modifier.size(width = 44.dp, height = 28.dp))
-                        Text(ch.name, color = if (sel) Color.White else C.Sub, fontSize = 14.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
+                        // Nom + programme en cours
+                        LaunchedEffect(ch.id) { m.loadNow(ch.id) }
+                        Column(Modifier.weight(1f)) {
+                            Text(ch.name, color = if (sel) Color.White else C.Sub, fontSize = 14.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
+                            val now = m.nowPlaying[ch.id]
+                            if (!now.isNullOrBlank()) Text(now, color = if (sel) Color(0xFFE0E0E0) else C.Dim, fontSize = 12.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        }
                     }
                 }
             }
