@@ -23,6 +23,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.composed
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Brush
@@ -208,6 +211,13 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     var banner by remember { mutableStateOf<String?>(null) }
     var chanList by remember { mutableStateOf(false) }
     var subsPanel by remember { mutableStateOf(false) }
+    var tvMenu by remember { mutableStateOf(false) }
+    val chanFr = remember { androidx.compose.ui.focus.FocusRequester() }
+    val subsFr = remember { androidx.compose.ui.focus.FocusRequester() }
+    val menuFr = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(chanList) { if (chanList && m.isTv) { delay(200); try { chanFr.requestFocus() } catch (_: Exception) { } } }
+    LaunchedEffect(subsPanel) { if (subsPanel && m.isTv) { delay(200); try { subsFr.requestFocus() } catch (_: Exception) { } } }
+    LaunchedEffect(tvMenu) { if (tvMenu) { delay(150); try { menuFr.requestFocus() } catch (_: Exception) { } } }
     var autoNextAt by remember { mutableLongStateOf(0L) }
     var tracksTick by remember { mutableIntStateOf(0) }
     var brightShown by remember { mutableFloatStateOf(-1f) }
@@ -354,6 +364,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     androidx.activity.compose.BackHandler(enabled = panel) { panel = false }
     androidx.activity.compose.BackHandler(enabled = chanList) { chanList = false }
     androidx.activity.compose.BackHandler(enabled = subsPanel) { subsPanel = false }
+    androidx.activity.compose.BackHandler(enabled = tvMenu && !subsPanel && !chanList && !panel) { tvMenu = false }
 
     // TV : masquer l'affichage après quelques secondes (sauf en pause)
     LaunchedEffect(uiTick, paused, panel, errorMsg) {
@@ -565,12 +576,12 @@ fun PlayerScreen(m: AppModel, start: Playable) {
         poke()
     }
     fun tvKey(e: androidx.compose.ui.input.key.KeyEvent): Boolean {
-        if (!m.isTv || panel || errorMsg != null) return false
+        if (!m.isTv || panel || tvMenu || subsPanel || chanList || errorMsg != null) return false
         if (e.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return false
         val live = item is Playable.Live
         return when (e.nativeKeyEvent.keyCode) {
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_SPACE -> {
-                if (e.nativeKeyEvent.repeatCount > 0) { if (e.nativeKeyEvent.repeatCount == 4) panel = true; true }
+                if (e.nativeKeyEvent.repeatCount > 0) { if (e.nativeKeyEvent.repeatCount == 4) tvMenu = true; true }
                 else { if (player.playWhenReady) player.pause() else player.play(); poke(); true }
             }
             KeyEvent.KEYCODE_MEDIA_PLAY -> { player.play(); poke(); true }
@@ -581,7 +592,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_PAGE_UP -> { if (!epStep(-1)) poke(); true }
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> { if (!live) seekBy(-10_000) else poke(); true }
             KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { if (!live) seekBy(30_000) else poke(); true }
-            KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_SETTINGS, KeyEvent.KEYCODE_INFO -> { panel = true; true }
+            KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_SETTINGS, KeyEvent.KEYCODE_INFO -> { tvMenu = true; true }
             else -> false
         }
     }
@@ -673,7 +684,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 }
                 if (m.isTv) {
                     Text(
-                        "OK : pause · Menu ou OK long : son et image" + if (item is Playable.Live) " · ▲▼ : chaînes" else " · ◀▶ : −10 s / +30 s",
+                        "OK : pause · Menu ou OK long : options" + if (item is Playable.Live) " · ▲▼ : chaînes" else " · ◀▶ : −10 s / +30 s",
                         color = C.Sub, fontSize = 13.sp
                     )
                 }
@@ -824,7 +835,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 player.trackSelectionParameters = b.build()
                 subsPanel = false
             }
-            Box(Modifier.fillMaxSize().background(Color(0x66000000)).clickable { subsPanel = false })
+            Box(Modifier.fillMaxSize().background(Color(0x66000000)).tapToClose { subsPanel = false })
             androidx.compose.foundation.lazy.LazyColumn(
                 Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(300.dp).background(Color(0xF0141414)),
                 contentPadding = PaddingValues(vertical = 16.dp)
@@ -833,7 +844,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 item {
                     Text(
                         (if (off) "✓  " else "    ") + "Aucun", color = Color.White, fontSize = 16.sp, fontWeight = if (off) FontWeight.Bold else FontWeight.Normal,
-                        modifier = Modifier.fillMaxWidth().clickable { choose(null, 0) }.padding(horizontal = 18.dp, vertical = 14.dp)
+                        modifier = Modifier.fillMaxWidth().focusRequester(subsFr).tvClickable { choose(null, 0) }.padding(horizontal = 18.dp, vertical = 14.dp)
                     )
                 }
                 textGroups.forEach { g ->
@@ -845,7 +856,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                             Text(
                                 (if (selected) "✓  " else "    ") + name, color = if (selected) Color.White else C.Sub, fontSize = 16.sp,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                modifier = Modifier.fillMaxWidth().clickable { choose(g, i) }.padding(horizontal = 18.dp, vertical = 14.dp)
+                                modifier = Modifier.fillMaxWidth().tvClickable { choose(g, i) }.padding(horizontal = 18.dp, vertical = 14.dp)
                             )
                         }
                     }
@@ -857,7 +868,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
         if (chanList && !m.pip && item is Playable.Live) {
             val live = item as Playable.Live
             val listState = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = (live.index - 2).coerceAtLeast(0))
-            Box(Modifier.fillMaxSize().background(Color(0x66000000)).clickable { chanList = false })
+            Box(Modifier.fillMaxSize().background(Color(0x66000000)).tapToClose { chanList = false })
             androidx.compose.foundation.lazy.LazyColumn(
                 Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(300.dp).background(Color(0xF0141414)),
                 state = listState,
@@ -867,8 +878,10 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     val ch = live.list[i]
                     val sel = i == live.index
                     Row(
-                        Modifier.fillMaxWidth().clickable { item = live.copy(index = i); chanList = false }
+                        Modifier.fillMaxWidth()
                             .background(if (sel) Color(0x33E11D2E) else Color.Transparent)
+                            .then(if (sel) Modifier.focusRequester(chanFr) else Modifier)
+                            .tvClickable { item = live.copy(index = i); chanList = false }
                             .padding(horizontal = 14.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -913,6 +926,35 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             }
         }
 
+        // TV : barre d'icônes (mêmes icônes que sur le téléphone), ouverte avec Menu ou un appui long sur OK
+        if (m.isTv && tvMenu && !panel && !subsPanel && !chanList && !m.pip) {
+            val ep = item as? Playable.Ep
+            val live = item as? Playable.Live
+            Row(
+                Modifier.align(Alignment.TopEnd).padding(top = 80.dp, end = 32.dp)
+                    .background(Color(0xE6141414), RoundedCornerShape(16.dp)).padding(horizontal = 18.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
+                var first = true
+                @Composable fun entry(label: String, active: Boolean = false, onClick: () -> Unit, icon: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit) {
+                    val fr = if (first) menuFr else null
+                    first = false
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        IconPill(label, active = active, requester = fr, size = 56.dp, onClick = onClick, icon = icon)
+                        Text(label, color = C.Sub, fontSize = 12.sp)
+                    }
+                }
+                if (ep != null) {
+                    if (ep.index > 0) entry("Épisode préc.", onClick = { epStep(-1); tvMenu = false }) { drawArrow(-1) }
+                    if (ep.index < ep.episodes.lastIndex) entry("Épisode suiv.", onClick = { epStep(1); tvMenu = false }) { drawArrow(1) }
+                }
+                if (live == null) entry("Sous-titres", onClick = { subsPanel = true }) { drawSubtitles() }
+                entry(modeNames[videoMode], active = videoMode != 0, onClick = { nextVideoMode() }) { drawAspect() }
+                entry("Synchro son", active = avDelay != 0, onClick = { panel = true }) { drawSync() }
+                if (live != null && live.list.size > 1) entry("Chaînes", onClick = { chanList = true }) { drawChannels() }
+            }
+        }
+
         if (panel && !m.pip) {
             Column(
                 Modifier.align(Alignment.CenterEnd).padding(24.dp).widthIn(max = 420.dp)
@@ -937,11 +979,6 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     LumoButton("Remettre à 0", primary = false) { setDelay(0) }
                     LumoButton("Fermer", primary = false) { panel = false }
                 }
-                if (m.isTv && item is Playable.Ep) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    LumoButton("‹ Épisode précédent", primary = false) { if (epStep(-1)) panel = false }
-                    LumoButton("Épisode suivant ›", primary = false) { if (epStep(1)) panel = false }
-                }
-                if (m.isTv) LumoButton("Image : " + modeNames[videoMode], primary = false) { nextVideoMode() }
                 Text("Mémorisé pour cette chaîne, ce film ou cette série.", color = C.Dim, fontSize = 12.sp)
             }
         }
@@ -976,14 +1013,18 @@ fun PlayerScreen(m: AppModel, start: Playable) {
 
 /** Bouton rond du lecteur (téléphone) avec une icône dessinée ; petit chiffre en option. */
 @Composable
-private fun IconPill(label: String, active: Boolean = false, badge: String? = null, onClick: () -> Unit, icon: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit) {
-    com.lumo.tv.ui.FocusBox(shape = androidx.compose.foundation.shape.CircleShape, scale = 1.08f, onClick = onClick) { _ ->
+private fun IconPill(
+    label: String, active: Boolean = false, badge: String? = null,
+    requester: androidx.compose.ui.focus.FocusRequester? = null, size: androidx.compose.ui.unit.Dp = 46.dp,
+    onClick: () -> Unit, icon: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit
+) {
+    com.lumo.tv.ui.FocusBox(shape = androidx.compose.foundation.shape.CircleShape, scale = 1.12f, requester = requester, onClick = onClick) { _ ->
         Box(
-            Modifier.size(46.dp).background(if (active) C.Red.copy(alpha = 0.85f) else Color(0x55FFFFFF), androidx.compose.foundation.shape.CircleShape)
+            Modifier.size(size).background(if (active) C.Red.copy(alpha = 0.85f) else Color(0x55FFFFFF), androidx.compose.foundation.shape.CircleShape)
                 .semantics { contentDescription = label },
             contentAlignment = Alignment.Center
         ) {
-            androidx.compose.foundation.Canvas(Modifier.size(24.dp)) { icon() }
+            androidx.compose.foundation.Canvas(Modifier.size(size * 0.52f)) { icon() }
             if (badge != null) Text(
                 badge, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 1.dp)
@@ -1042,4 +1083,27 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSubtitles() {
         cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.1f), style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
     drawLine(Color.White, androidx.compose.ui.geometry.Offset(w * 0.22f, h * 0.45f), androidx.compose.ui.geometry.Offset(w * 0.78f, h * 0.45f), strokeWidth = sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
     drawLine(Color.White, androidx.compose.ui.geometry.Offset(w * 0.22f, h * 0.62f), androidx.compose.ui.geometry.Offset(w * 0.6f, h * 0.62f), strokeWidth = sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+}
+
+
+/** Ligne cliquable qui se surligne quand elle a le focus (télécommande). */
+private fun Modifier.tvClickable(onClick: () -> Unit): Modifier = composed {
+    val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val focused by src.collectIsFocusedAsState()
+    this.background(if (focused) Color(0x44FFFFFF) else Color.Transparent)
+        .clickable(interactionSource = src, indication = null, onClick = onClick)
+}
+
+/** Voile sombre derrière un panneau : se ferme au toucher, sans prendre le focus de la télécommande. */
+private fun Modifier.tapToClose(onClose: () -> Unit): Modifier =
+    this.pointerInput(Unit) { androidx.compose.foundation.gestures.detectTapGestures { onClose() } }
+
+/** Flèche gauche (-1) ou droite (1). */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawArrow(dir: Int) {
+    val w = size.width; val h = size.height
+    val sw = w * 0.11f
+    val tipX = if (dir > 0) w * 0.68f else w * 0.32f
+    val backX = if (dir > 0) w * 0.36f else w * 0.64f
+    drawLine(Color.White, androidx.compose.ui.geometry.Offset(backX, h * 0.2f), androidx.compose.ui.geometry.Offset(tipX, h * 0.5f), strokeWidth = sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+    drawLine(Color.White, androidx.compose.ui.geometry.Offset(tipX, h * 0.5f), androidx.compose.ui.geometry.Offset(backX, h * 0.8f), strokeWidth = sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
 }
