@@ -195,34 +195,31 @@ private fun HeroFlow(m: AppModel, films: List<Vod>) {
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0x99000000), Color(0x55000000), Color.Black))))
             }
         }
-        Column(Modifier.fillMaxWidth().padding(top = if (land) 0.dp else 6.dp)) {
-            CoverFlow(
-                title = null, items = flow, isTv = m.isTv, startIndex = cur,
-                width = if (m.isTv) 190.dp else if (land) 120.dp else 165.dp,
-                autoMs = 5000, showCaption = false, onCurrent = { cur = it }, centerScale = if (m.isTv) 1.35f else if (land) 1.25f else 1.5f
-            ) { i -> m.go(Screen.MovieDetail(films[i])) }
+        val wide = m.isTv || land
+        // Titre + résumé + boutons du film du milieu
+        @Composable fun Info(center: Boolean) {
             Column(
-                Modifier.fillMaxWidth().padding(horizontal = LocalPad.current),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                horizontalAlignment = if (center) Alignment.CenterHorizontally else Alignment.Start,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 androidx.compose.animation.AnimatedContent(targetState = v, label = "heroTitle", transitionSpec = {
                     androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(500)) togetherWith androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(300))
                 }) { f ->
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(f.name, color = Color.White, fontSize = if (m.isTv) 30.sp else 24.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                        f.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { Text("Film · ★ %.1f".format(it), color = C.Sub, fontSize = 13.sp) }
+                    val ta = if (center) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start
+                    Column(horizontalAlignment = if (center) Alignment.CenterHorizontally else Alignment.Start) {
+                        Text(f.name, color = Color.White, fontSize = if (m.isTv) 30.sp else 24.sp, fontWeight = FontWeight.Black, maxLines = 2, lineHeight = if (m.isTv) 34.sp else 28.sp, overflow = TextOverflow.Ellipsis, textAlign = ta)
+                        f.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { Text("Film · ★ %.1f".format(it), color = C.Sub, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
                         // Résumé du film du milieu
                         plots[f.id]?.takeIf { it.isNotBlank() }?.let {
                             Text(
-                                it, color = Color(0xFFD0D0D0), fontSize = if (m.isTv) 15.sp else 13.sp, lineHeight = if (m.isTv) 20.sp else 18.sp,
-                                maxLines = 3, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                modifier = Modifier.widthIn(max = 640.dp).padding(top = 6.dp)
+                                it, color = Color(0xFFD0D0D0), fontSize = if (m.isTv) 15.sp else 13.sp, lineHeight = if (m.isTv) 21.sp else 18.sp,
+                                maxLines = if (wide) 5 else 3, overflow = TextOverflow.Ellipsis, textAlign = ta,
+                                modifier = Modifier.widthIn(max = 640.dp).padding(top = 8.dp)
                             )
                         }
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 4.dp)) {
                     LumoButton("Lecture", icon = { Icon(Icons.Default.PlayArrow, null, tint = Color.Black) }) {
                         m.go(Screen.Player(com.lumo.tv.Playable.Movie(v)))
                     }
@@ -230,8 +227,28 @@ private fun HeroFlow(m: AppModel, films: List<Vod>) {
                         m.go(Screen.MovieDetail(v))
                     }
                 }
-                Spacer(Modifier.height(6.dp))
             }
+        }
+        if (wide) {
+            // TV et téléphone à l'horizontale : affiches à gauche, titre/résumé/boutons à droite (tout tient à l'écran)
+            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(0.56f)) {
+                    CoverFlow(
+                        title = null, items = flow, isTv = m.isTv, startIndex = cur,
+                        width = if (m.isTv) 135.dp else 100.dp,
+                        autoMs = 5000, showCaption = false, onCurrent = { cur = it }, centerScale = 1.3f
+                    ) { i -> m.go(Screen.MovieDetail(films[i])) }
+                }
+                Box(Modifier.weight(0.44f).padding(end = LocalPad.current, start = 8.dp)) { Info(center = false) }
+            }
+        } else Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+            CoverFlow(
+                title = null, items = flow, isTv = m.isTv, startIndex = cur,
+                width = 165.dp,
+                autoMs = 5000, showCaption = false, onCurrent = { cur = it }, centerScale = 1.5f
+            ) { i -> m.go(Screen.MovieDetail(films[i])) }
+            Box(Modifier.fillMaxWidth().padding(horizontal = LocalPad.current), contentAlignment = Alignment.Center) { Info(center = true) }
+            Spacer(Modifier.height(6.dp))
         }
     }
 }

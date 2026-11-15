@@ -73,8 +73,9 @@ fun CoverFlow(
     val haptic = LocalHapticFeedback.current
     val cardW = width ?: if (isTv) 200.dp else 170.dp
     val cardH = cardW * 1.5f
-    val near1 = with(density) { (if (isTv) 160.dp else 108.dp).toPx() }
-    val far = with(density) { (if (isTv) 75.dp else 46.dp).toPx() }
+    // Écarts proportionnels à la taille des affiches (bonnes proportions quelle que soit la taille)
+    val near1 = with(density) { (cardW * (if (isTv) 0.8f else 0.64f)).toPx() }
+    val far = with(density) { (cardW * (if (isTv) 0.37f else 0.27f)).toPx() }
     // Fluidité : on ne recompose que quand l'affiche du milieu change ; le mouvement image par image
     // est calculé dans graphicsLayer (sans recomposition)
     val current by remember(items.size) { derivedStateOf { pos.value.roundToInt().coerceIn(0, last) } }
