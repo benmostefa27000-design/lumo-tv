@@ -139,7 +139,10 @@ fun CoverFlow(
             val settled = !pos.isRunning && abs(p - p.roundToInt()) < 0.02f
             val pop by androidx.compose.animation.core.animateFloatAsState(
                 if (settled) 1f else 0f,
-                androidx.compose.animation.core.spring(dampingRatio = 0.62f, stiffness = 180f), label = "pop"
+                // Grandit en douceur (sans rebond), rétrécit un peu plus vite quand ça repart
+                if (settled) androidx.compose.animation.core.tween(850, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                else androidx.compose.animation.core.tween(380, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                label = "pop"
             )
             val boost = 1f + (centerScale - 1f) * pop
             val lo = max(0, floor(p - 5f).toInt())
