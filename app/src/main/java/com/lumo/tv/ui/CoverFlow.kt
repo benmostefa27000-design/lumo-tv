@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
@@ -74,7 +75,9 @@ fun CoverFlow(
     val cardH = cardW * 1.5f
     val near1 = with(density) { (if (isTv) 160.dp else 108.dp).toPx() }
     val far = with(density) { (if (isTv) 75.dp else 46.dp).toPx() }
-    val current = pos.value.roundToInt().coerceIn(0, last)
+    // Fluidité : on ne recompose que quand l'affiche du milieu change ; le mouvement image par image
+    // est calculé dans graphicsLayer (sans recomposition)
+    val current by remember(items.size) { derivedStateOf { pos.value.roundToInt().coerceIn(0, last) } }
     var focused by remember { mutableStateOf(false) }
 
     var firstTick by remember { mutableStateOf(true) }
@@ -134,32 +137,30 @@ fun CoverFlow(
                 },
             contentAlignment = Alignment.TopCenter
         ) {
-            val p = pos.value
-            // L'affiche grandit progressivement en s'approchant du milieu (et rétrécit en s'éloignant), comme un fondu
-            val lo = max(0, floor(p - 5f).toInt())
-            val hi = min(last, ceil(p + 5f).toInt())
+            val lo = max(0, current - 6)
+            val hi = min(last, current + 6)
+            val spread = near1 * (1f + (centerScale - 1f) * 1.1f)
             for (k in lo..hi) {
                 val item = items[k]
-                val d = k - p
-                val a = abs(d)
-                val s = sign(d)
-                val near = min(a, 1f)
-                val x = s * (near * near1 * (1f + (centerScale - 1f) * 1.1f) + max(a - 1f, 0f) * far)
-                // 0 loin du milieu → 1 pile au milieu, avec une courbe douce
-                val t = (1f - near).coerceIn(0f, 1f)
-                val grow = 1f + (centerScale - 1f) * (t * t * (3f - 2f * t))
                 val isCenter = k == current
                 key(item.id) {
                     Box(
                         Modifier
-                            .zIndex(100f - a * 10f)
+                            .zIndex(100f - abs(k - current) * 10f)
                             .padding(top = 14.dp + cardH * (centerScale - 1f) / 2f)
                             .size(cardW, cardH)
                             .graphicsLayer {
-                                translationX = x
+                                // Position lue ici (à chaque image) → pas de recomposition pendant l'animation
+                                val d = k - pos.value
+                                val a = abs(d)
+                                val s = sign(d)
+                                val near = min(a, 1f)
+                                translationX = s * (near * spread + max(a - 1f, 0f) * far)
                                 rotationY = -s * near * 55f
                                 cameraDistance = 14f * density.density
-                                // L'affiche du milieu est plus grande (centerScale), les autres rétrécissent
+                                // L'affiche grandit progressivement en arrivant au milieu (courbe douce)
+                                val t = 1f - near
+                                val grow = 1f + (centerScale - 1f) * (t * t * (3f - 2f * t))
                                 val sc = (1f - 0.14f * near) * grow
                                 scaleX = sc; scaleY = sc
                                 alpha = if (a > 4.6f) 0f else 1f
@@ -168,6 +169,12 @@ fun CoverFlow(
                     ) {
                         Box(
                             Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)).background(C.Card2)
+                                // Assombrir les affiches sur les côtés (calculé au dessin, sans recomposition)
+                                .drawWithContent {
+                                    drawContent()
+                                    val a = abs(k - pos.value)
+                                    if (a > 0.05f) drawRect(Color.Black.copy(alpha = min(a, 3f) * 0.16f))
+                                }
                                 .then(if (isCenter && focused) Modifier.border(3.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
                         ) {
                             if (card != null) card(item) else {
@@ -176,7 +183,6 @@ fun CoverFlow(
                                 if (img.isNotBlank()) AsyncImage(model = img, contentDescription = item.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                             }
                             // Assombrir les affiches sur les côtés
-                            if (a > 0.05f) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = (min(a, 3f) * 0.16f))))
                         }
                         // Reflet sous l'affiche
                         Box(
