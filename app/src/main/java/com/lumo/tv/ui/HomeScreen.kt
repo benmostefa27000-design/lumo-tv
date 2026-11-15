@@ -153,8 +153,8 @@ fun HomeScreen(m: AppModel) {
 /** Rangée d'affiches en défilement 3D (effet iPad) quand les animations sont activées, sinon rangée classique. */
 @Composable
 private fun FlowOrRow(m: AppModel, title: String, keyPrefix: String, objs: List<Any>, cardW: androidx.compose.ui.unit.Dp) {
-    val anim = run { m.store.version; m.store.anim3d }
-    if (anim && objs.size >= 3) {
+    // Effet iPad gardé seulement pour « Nouveautés » et les profils : ici, rangée classique
+    if (false) {
         val flow = remember(objs) {
             objs.map { o ->
                 when (o) {
