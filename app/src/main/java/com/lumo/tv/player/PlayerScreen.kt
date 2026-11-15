@@ -28,6 +28,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -221,7 +222,21 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     val menuFr = remember { androidx.compose.ui.focus.FocusRequester() }
     LaunchedEffect(chanList) { if (chanList && m.isTv) { delay(200); try { chanFr.requestFocus() } catch (_: Exception) { } } }
     LaunchedEffect(subsPanel) { if (subsPanel && m.isTv) { delay(200); try { subsFr.requestFocus() } catch (_: Exception) { } } }
-    LaunchedEffect(tvMenu, subsPanel, chanList) { if (tvMenu && !subsPanel && !chanList) { delay(150); try { menuFr.requestFocus() } catch (_: Exception) { } } }
+    // Icônes TV : la sélection va dessus (on réessaie tant qu'elle n'y est pas) et elles s'effacent seules après 7 s sans appui
+    var menuHasFocus by remember { mutableStateOf(false) }
+    var menuTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(tvMenu, subsPanel, chanList) {
+        if (tvMenu && !subsPanel && !chanList) {
+            repeat(8) {
+                delay(150)
+                if (menuHasFocus) return@LaunchedEffect
+                try { menuFr.requestFocus() } catch (_: Exception) { }
+            }
+        }
+    }
+    LaunchedEffect(tvMenu, menuTick, subsPanel, chanList, panel) {
+        if (tvMenu && !subsPanel && !chanList && !panel) { delay(7000); tvMenu = false }
+    }
     // TV : quand tout est fermé (menu d'icônes, sous-titres/audio, chaînes), la télécommande revient sur la vidéo
     LaunchedEffect(tvMenu, subsPanel, chanList) {
         if (m.isTv && !tvMenu && !subsPanel && !chanList) { delay(120); try { rootFr.requestFocus() } catch (_: Exception) { } }
@@ -967,7 +982,9 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             Row(
                 Modifier.align(Alignment.BottomEnd).padding(bottom = 28.dp, end = 32.dp)
                     // ▲ ▼ ferment les icônes (au lieu de perdre la sélection)
+                    .onFocusChanged { menuHasFocus = it.hasFocus }
                     .onPreviewKeyEvent { e ->
+                        menuTick++
                         val c = e.nativeKeyEvent.keyCode
                         if ((c == KeyEvent.KEYCODE_DPAD_UP || c == KeyEvent.KEYCODE_DPAD_DOWN) && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) { tvMenu = false; true }
                         else false
