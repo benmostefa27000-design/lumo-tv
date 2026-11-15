@@ -70,6 +70,7 @@ fun CoverFlow(
     target: Int = -1,
     targetKey: Int = 0,
     reflection: Float = 0.3f,
+    compact: Boolean = false,
     onOpen: (Int) -> Unit
 ) {
     if (items.isEmpty()) return
@@ -110,12 +111,12 @@ fun CoverFlow(
     // Pilotage de l'extérieur (ex. ◀ ▶ sur les boutons de l'accueil TV)
     LaunchedEffect(targetKey) { if (targetKey > 0 && target >= 0) goTo(if (target > last) 0 else target) }
 
-    Column(Modifier.fillMaxWidth().padding(top = 18.dp)) {
+    Column(Modifier.fillMaxWidth().padding(top = if (compact) 0.dp else 18.dp)) {
         if (title != null) SectionTitle(title, Modifier.padding(start = LocalPad.current, bottom = 4.dp))
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(cardH * centerScale + cardH * reflection + 30.dp)
+                .height(cardH * centerScale + cardH * reflection + if (compact) 18.dp else 30.dp)
                 .clipToBounds()
                 .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                 // Télécommande : ▼ depuis les affiches → bouton « Lecture » (au lieu de sauter à la rangée suivante)

@@ -237,8 +237,8 @@ private fun HeroFlow(m: AppModel, films: List<Vod>, onFocusTop: () -> Unit = {})
                         plots[f.id]?.takeIf { it.isNotBlank() }?.let {
                             Text(
                                 it, color = Color(0xFFD0D0D0), fontSize = 13.sp, lineHeight = 18.sp,
-                                maxLines = if (wide) 4 else if (m.isTv) 2 else 3, overflow = TextOverflow.Ellipsis, textAlign = ta,
-                                modifier = Modifier.widthIn(max = 640.dp).padding(top = 8.dp)
+                                maxLines = if (wide) 4 else 3, overflow = TextOverflow.Ellipsis, textAlign = ta,
+                                modifier = Modifier.widthIn(max = if (m.isTv) 760.dp else 640.dp).padding(top = if (m.isTv) 4.dp else 8.dp)
                             )
                         }
                     }
@@ -278,11 +278,11 @@ private fun HeroFlow(m: AppModel, films: List<Vod>, onFocusTop: () -> Unit = {})
             }
         } else Column(Modifier.fillMaxWidth().padding(top = if (m.isTv) 0.dp else 6.dp)) {
             // TV : taille des affiches calculée pour que tout (affiches + texte + boutons) tienne dans l'écran
-            val tvW = if (m.isTv) ((screenHeightDp() - 290.dp) / 1.4f / 1.5f).coerceIn(80.dp, 150.dp) else 165.dp
+            val tvW = if (m.isTv) ((screenHeightDp() - 300.dp) / 1.5f / 1.5f).coerceIn(80.dp, 160.dp) else 165.dp
             CoverFlow(
                 title = null, items = flow, isTv = m.isTv, startIndex = cur,
-                width = tvW, reflection = if (m.isTv) 0.1f else 0.3f,
-                autoMs = 5000, showCaption = false, onCurrent = { cur = it }, centerScale = if (m.isTv) 1.3f else 1.5f,
+                width = tvW, reflection = if (m.isTv) 0f else 0.3f, compact = m.isTv,
+                autoMs = 5000, showCaption = false, onCurrent = { cur = it }, centerScale = 1.5f,
                 // TV : ▼ des onglets → affiches (◀ ▶ défilent) ; ▼ → Lecture / Plus d'infos ; ▼ → rangées
                 focusRequester = if (m.isTv) flowFr else null, downTo = if (m.isTv) playFr else null,
                 paused = infoFocused
