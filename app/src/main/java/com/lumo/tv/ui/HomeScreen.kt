@@ -211,7 +211,8 @@ private fun HeroFlow(m: AppModel, films: List<Vod>, onFocusTop: () -> Unit = {})
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0x99000000), Color(0x55000000), Color.Black))))
             }
         }
-        val wide = m.isTv || land
+        // TV : tout centré en colonne (affiches, puis titre/résumé/boutons). Téléphone horizontal : côte à côte.
+        val wide = land && !m.isTv
         // Titre + résumé + boutons du film du milieu
         val playFr = remember { androidx.compose.ui.focus.FocusRequester() }
         val flowFr = remember { androidx.compose.ui.focus.FocusRequester() }
@@ -230,13 +231,13 @@ private fun HeroFlow(m: AppModel, films: List<Vod>, onFocusTop: () -> Unit = {})
                 }) { f ->
                     val ta = if (center) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start
                     Column(horizontalAlignment = if (center) Alignment.CenterHorizontally else Alignment.Start) {
-                        Text(f.name, color = Color.White, fontSize = if (wide) 22.sp else 24.sp, fontWeight = FontWeight.Black, maxLines = 2, lineHeight = if (wide) 26.sp else 28.sp, overflow = TextOverflow.Ellipsis, textAlign = ta)
+                        Text(f.name, color = Color.White, fontSize = if (wide || m.isTv) 22.sp else 24.sp, fontWeight = FontWeight.Black, maxLines = if (m.isTv) 1 else 2, lineHeight = if (wide || m.isTv) 26.sp else 28.sp, overflow = TextOverflow.Ellipsis, textAlign = ta)
                         f.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { Text("Film · ★ %.1f".format(it), color = C.Sub, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
                         // Résumé du film du milieu
                         plots[f.id]?.takeIf { it.isNotBlank() }?.let {
                             Text(
                                 it, color = Color(0xFFD0D0D0), fontSize = 13.sp, lineHeight = 18.sp,
-                                maxLines = if (wide) 4 else 3, overflow = TextOverflow.Ellipsis, textAlign = ta,
+                                maxLines = if (wide) 4 else if (m.isTv) 2 else 3, overflow = TextOverflow.Ellipsis, textAlign = ta,
                                 modifier = Modifier.widthIn(max = 640.dp).padding(top = 8.dp)
                             )
                         }
@@ -245,7 +246,7 @@ private fun HeroFlow(m: AppModel, films: List<Vod>, onFocusTop: () -> Unit = {})
                 // Les boutons passent à la ligne s'il manque de place (ils restent toujours atteignables)
                 FlowRowCompat(spacing = 10.dp, center = center) {
                     // TV : ▲ depuis les boutons → retour sur les affiches
-                    LumoButton("Lecture", requester = playFr, modifier = if (m.isTv) Modifier.focusProperties { up = flowFr; left = flowFr } else Modifier
+                    LumoButton("Lecture", requester = playFr, modifier = if (m.isTv) Modifier.focusProperties { up = flowFr } else Modifier
                     , icon = { Icon(Icons.Default.PlayArrow, null, tint = Color.Black) }) {
                         m.go(Screen.Player(com.lumo.tv.Playable.Movie(v)))
                     }
@@ -275,11 +276,16 @@ private fun HeroFlow(m: AppModel, films: List<Vod>, onFocusTop: () -> Unit = {})
                 }
                 Box(Modifier.weight(0.4f).padding(end = LocalPad.current, start = 4.dp)) { Info(center = false) }
             }
-        } else Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+        } else Column(Modifier.fillMaxWidth().padding(top = if (m.isTv) 0.dp else 6.dp)) {
+            // TV : taille des affiches calculée pour que tout (affiches + texte + boutons) tienne dans l'écran
+            val tvW = if (m.isTv) ((screenHeightDp() - 290.dp) / 1.4f / 1.5f).coerceIn(80.dp, 150.dp) else 165.dp
             CoverFlow(
                 title = null, items = flow, isTv = m.isTv, startIndex = cur,
-                width = 165.dp,
-                autoMs = 5000, showCaption = false, onCurrent = { cur = it }, centerScale = 1.5f
+                width = tvW, reflection = if (m.isTv) 0.1f else 0.3f,
+                autoMs = 5000, showCaption = false, onCurrent = { cur = it }, centerScale = if (m.isTv) 1.3f else 1.5f,
+                // TV : ▼ des onglets → affiches (◀ ▶ défilent) ; ▼ → Lecture / Plus d'infos ; ▼ → rangées
+                focusRequester = if (m.isTv) flowFr else null, downTo = if (m.isTv) playFr else null,
+                paused = infoFocused
             ) { i -> m.go(Screen.MovieDetail(films[i])) }
             Box(Modifier.fillMaxWidth().padding(horizontal = LocalPad.current), contentAlignment = Alignment.Center) { Info(center = true) }
             Spacer(Modifier.height(6.dp))
