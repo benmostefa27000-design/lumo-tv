@@ -134,7 +134,7 @@ private fun TvTopBar(m: AppModel) {
         Spacer(Modifier.width(18.dp))
         val fr = rememberAutoFocus(true)
         listOf(Tab.Home, Tab.Live, Tab.Movies, Tab.Series, Tab.MyList).forEach { t ->
-            FocusBox(shape = RoundedCornerShape(50), scale = 1.06f, requester = if (t == m.tab) fr else null, onClick = { m.tab = t }) { f ->
+            FocusBox(shape = RoundedCornerShape(14.dp), scale = 1.08f, requester = if (t == m.tab) fr else null, onClick = { m.tab = t }) { f ->
                 TabChip(t, selected = m.tab == t, focused = f)
             }
         }
@@ -155,7 +155,7 @@ private fun PhoneLandscapeTopBar(m: AppModel) {
         LumoLogo(24)
         Spacer(Modifier.width(14.dp))
         listOf(Tab.Home, Tab.Live, Tab.Movies, Tab.Series, Tab.MyList).forEach { t ->
-            FocusBox(shape = RoundedCornerShape(50), scale = 1.03f, onClick = { m.tab = t }) { f ->
+            FocusBox(shape = RoundedCornerShape(10.dp), scale = 1.03f, onClick = { m.tab = t }) { f ->
                 TabChip(t, selected = m.tab == t, focused = f, small = true)
             }
         }
@@ -226,19 +226,23 @@ private fun ProfileBadge(m: AppModel, onClick: () -> Unit) {
 }
 
 
-/** Onglet en icône seule (dessins maison : maison, télé, clap de cinéma, écrans empilés, cœur). */
+/** Onglet en icône seule ; quand il a le focus : carré arrondi clair + nom en dessous (style Google TV). */
 @Composable
 private fun TabChip(t: Tab, selected: Boolean, focused: Boolean, small: Boolean = false) {
-    val bg = when { focused -> Color.White; selected -> Color(0x33FFFFFF); else -> Color.Transparent }
-    val fg = when { focused -> Color.Black; selected -> Color.White; else -> C.Sub }
-    val box = if (small) 40.dp else 50.dp
-    Box(
-        Modifier.size(box).background(bg, androidx.compose.foundation.shape.CircleShape)
-            .semantics { contentDescription = t.label },
-        contentAlignment = Alignment.Center
-    ) {
-        androidx.compose.foundation.Canvas(Modifier.size(box * 0.56f)) { drawTab(t, fg) }
-        if (selected && !focused) Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 3.dp).size(width = 14.dp, height = 3.dp).background(C.Red, RoundedCornerShape(2.dp)))
+    val box = if (small) 40.dp else 54.dp
+    val bg = when { focused -> Color(0xFFE8E6FF); selected -> Color(0x26FFFFFF); else -> Color.Transparent }
+    val fg = when { focused -> Color(0xFF15131F); selected -> Color.White; else -> Color(0xFFCFCFD6) }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            Modifier.size(box).background(bg, RoundedCornerShape(if (small) 10.dp else 14.dp)).semantics { contentDescription = t.label },
+            contentAlignment = Alignment.Center
+        ) {
+            androidx.compose.foundation.Canvas(Modifier.size(box * 0.56f)) { drawTab(t, fg) }
+        }
+        if (!small) Box(Modifier.height(22.dp), contentAlignment = Alignment.Center) {
+            if (focused) Text(if (t == Tab.Live) "Direct" else t.label, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            else if (selected) Box(Modifier.size(width = 14.dp, height = 3.dp).background(C.Red, RoundedCornerShape(2.dp)))
+        }
     }
 }
 
@@ -264,20 +268,17 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawTab(t: Tab, c: 
             drawCircle(c, radius = w * 0.07f, center = o(0.75f, 0.6f))
         }
         Tab.Movies -> {
-            // Clap de cinéma
-            drawRoundRect(c, topLeft = o(0.08f, 0.42f), size = androidx.compose.ui.geometry.Size(w * 0.84f, h * 0.5f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.06f), style = st)
-            val slat = androidx.compose.ui.graphics.Path().apply {
-                moveTo(w * 0.08f, h * 0.36f); lineTo(w * 0.86f, h * 0.12f); lineTo(w * 0.92f, h * 0.28f); lineTo(w * 0.14f, h * 0.52f); close()
-            }
-            drawPath(slat, c, style = st)
-            line(0.32f, 0.29f, 0.4f, 0.44f); line(0.56f, 0.22f, 0.64f, 0.37f)
+            // Clap de cinéma avec bouton lecture
+            drawRoundRect(c, topLeft = o(0.06f, 0.14f), size = androidx.compose.ui.geometry.Size(w * 0.88f, h * 0.74f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.08f), style = st)
+            line(0.06f, 0.36f, 0.94f, 0.36f)
+            for (x in listOf(0.26f, 0.44f, 0.62f, 0.8f)) line(x, 0.16f, x - 0.05f, 0.34f)
+            val play = androidx.compose.ui.graphics.Path().apply { moveTo(w * 0.42f, h * 0.48f); lineTo(w * 0.64f, h * 0.62f); lineTo(w * 0.42f, h * 0.76f); close() }
+            drawPath(play, c)
         }
         Tab.Series -> {
-            // Écrans empilés avec lecture
-            drawRoundRect(c, topLeft = o(0.24f, 0.08f), size = androidx.compose.ui.geometry.Size(w * 0.7f, h * 0.5f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.08f), style = st)
-            drawRoundRect(c, topLeft = o(0.06f, 0.32f), size = androidx.compose.ui.geometry.Size(w * 0.7f, h * 0.58f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.08f))
-            val play = androidx.compose.ui.graphics.Path().apply { moveTo(w * 0.33f, h * 0.48f); lineTo(w * 0.55f, h * 0.61f); lineTo(w * 0.33f, h * 0.74f); close() }
-            drawPath(play, if (c == Color.Black) Color.White else Color.Black)
+            // Écran avec pied (séries)
+            drawRoundRect(c, topLeft = o(0.06f, 0.12f), size = androidx.compose.ui.geometry.Size(w * 0.88f, h * 0.58f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.08f), style = st)
+            line(0.5f, 0.72f, 0.5f, 0.86f); line(0.3f, 0.88f, 0.7f, 0.88f)
         }
         Tab.MyList -> {
             val p = androidx.compose.ui.graphics.Path().apply {
