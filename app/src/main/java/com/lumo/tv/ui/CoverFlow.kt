@@ -61,6 +61,7 @@ fun CoverFlow(
     autoMs: Long = 0,
     showCaption: Boolean = true,
     onCurrent: ((Int) -> Unit)? = null,
+    centerScale: Float = 1f,
     onOpen: (Int) -> Unit
 ) {
     if (items.isEmpty()) return
@@ -101,7 +102,7 @@ fun CoverFlow(
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(cardH + cardH * 0.3f + 30.dp)
+                .height(cardH * centerScale + cardH * 0.3f + 30.dp)
                 .clipToBounds()
                 .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                 .onFocusChanged { focused = it.hasFocus || it.isFocused }
@@ -142,19 +143,20 @@ fun CoverFlow(
                 val a = abs(d)
                 val s = sign(d)
                 val near = min(a, 1f)
-                val x = s * (near * near1 + max(a - 1f, 0f) * far)
+                val x = s * (near * near1 * (1f + (centerScale - 1f) * 1.2f) + max(a - 1f, 0f) * far)
                 val isCenter = k == current
                 key(item.id) {
                     Box(
                         Modifier
                             .zIndex(100f - a * 10f)
-                            .padding(top = 14.dp)
+                            .padding(top = 14.dp + cardH * (centerScale - 1f) / 2f)
                             .size(cardW, cardH)
                             .graphicsLayer {
                                 translationX = x
                                 rotationY = -s * near * 55f
                                 cameraDistance = 14f * density.density
-                                val sc = 1f - 0.14f * near
+                                // L'affiche du milieu est plus grande (centerScale), les autres rétrécissent
+                                val sc = centerScale - (centerScale - 0.86f) * near
                                 scaleX = sc; scaleY = sc
                                 alpha = if (a > 4.6f) 0f else 1f
                             }

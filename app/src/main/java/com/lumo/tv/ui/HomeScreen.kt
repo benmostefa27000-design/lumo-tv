@@ -169,6 +169,14 @@ private fun HeroFlow(m: AppModel, films: List<Vod>) {
     var cur by remember(films) { mutableIntStateOf(1.coerceAtMost(films.lastIndex)) }
     val v = films[cur.coerceIn(0, films.lastIndex)]
     val land = isPhoneLandscape(m.isTv)
+    // Résumés (chargés au fur et à mesure, gardés en mémoire)
+    val plots = remember { mutableStateMapOf<String, String>() }
+    LaunchedEffect(v.id) {
+        if (!plots.containsKey(v.id)) {
+            val p = withContext(Dispatchers.IO) { try { m.client?.vodInfo(v.id)?.plot } catch (_: Exception) { null } }
+            plots[v.id] = p?.trim() ?: ""
+        }
+    }
     val flow = remember(films) {
         films.map { f -> FlowItem(f.id, f.name, f.icon, "", "movie") }
     }
@@ -189,7 +197,7 @@ private fun HeroFlow(m: AppModel, films: List<Vod>) {
             CoverFlow(
                 title = null, items = flow, isTv = m.isTv, startIndex = cur,
                 width = if (m.isTv) 190.dp else if (land) 120.dp else 165.dp,
-                autoMs = 5000, showCaption = false, onCurrent = { cur = it }
+                autoMs = 5000, showCaption = false, onCurrent = { cur = it }, centerScale = 1.2f
             ) { i -> m.go(Screen.MovieDetail(films[i])) }
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = LocalPad.current),
@@ -202,6 +210,14 @@ private fun HeroFlow(m: AppModel, films: List<Vod>) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(f.name, color = Color.White, fontSize = if (m.isTv) 30.sp else 24.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                         f.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { Text("Film · ★ %.1f".format(it), color = C.Sub, fontSize = 13.sp) }
+                        // Résumé du film du milieu
+                        plots[f.id]?.takeIf { it.isNotBlank() }?.let {
+                            Text(
+                                it, color = Color(0xFFD0D0D0), fontSize = if (m.isTv) 15.sp else 13.sp, lineHeight = if (m.isTv) 20.sp else 18.sp,
+                                maxLines = 3, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                modifier = Modifier.widthIn(max = 640.dp).padding(top = 6.dp)
+                            )
+                        }
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
