@@ -434,6 +434,8 @@ fun PlayerScreen(m: AppModel, start: Playable) {
 
     DisposableEffect(Unit) {
         val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) { m.updatePip(player.playWhenReady, m.pipCanStep) }
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { m.updatePip(playWhenReady, m.pipCanStep) }
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) { tracksTick++ }
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 paused = !playWhenReady
@@ -540,6 +542,20 @@ fun PlayerScreen(m: AppModel, start: Playable) {
         m.showToast("S${e.season} É${e.num}")
         poke()
         return true
+    }
+    // Boutons du mini-lecteur : ⏮ ⏯ ⏭
+    LaunchedEffect(item) {
+        val it = item
+        m.updatePip(player.playWhenReady, (it is Playable.Live && it.list.size > 1) || (it is Playable.Ep && it.episodes.size > 1))
+    }
+    LaunchedEffect(Unit) {
+        m.pipEvents.collect { a ->
+            when (a) {
+                "toggle" -> if (player.playWhenReady) player.pause() else player.play()
+                "prev" -> if (item is Playable.Live) zap(-1) else epStep(-1)
+                "next" -> if (item is Playable.Live) zap(1) else epStep(1)
+            }
+        }
     }
     fun seekBy(ms: Long) {
         player.seekTo((player.currentPosition + ms).coerceAtLeast(0))

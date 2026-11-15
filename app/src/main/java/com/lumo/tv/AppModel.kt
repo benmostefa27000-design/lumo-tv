@@ -110,6 +110,17 @@ class AppModel(private val context: Context) {
 
     /** Mini-lecteur (image dans l'image) et appli en arrière-plan. */
     var pip by mutableStateOf(false)
+
+    // Mini-lecteur (PiP) : boutons ⏮ ⏯ ⏭ dans la petite fenêtre
+    var pipPlaying = true
+    var pipCanStep = false
+    var onPipStateChanged: (() -> Unit)? = null
+    val pipEvents = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 8)
+    fun updatePip(playing: Boolean, canStep: Boolean) {
+        if (playing == pipPlaying && canStep == pipCanStep) return
+        pipPlaying = playing; pipCanStep = canStep
+        onPipStateChanged?.invoke()
+    }
     var appStopped by mutableStateOf(false)
 
     /** Ordres de télécommande reçus du téléphone (lecture/pause, chaîne…). */

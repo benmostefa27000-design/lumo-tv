@@ -8,6 +8,8 @@ import androidx.lifecycle.lifecycleScope
 import com.lumo.tv.ui.LumoApp
 import kotlinx.coroutines.launch
 
+private const val PIP_ACTION = "com.lumo.tv.PIP_CONTROL"
+
 class MainActivity : ComponentActivity() {
     lateinit var model: AppModel
 
@@ -17,6 +19,47 @@ class MainActivity : ComponentActivity() {
         model = AppModel(applicationContext)
         handleIntent(intent)
         setContent { LumoApp(model) }
+        // Boutons du mini-lecteur
+        val f = android.content.IntentFilter(PIP_ACTION)
+        if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(pipReceiver, f, android.content.Context.RECEIVER_NOT_EXPORTED)
+        else @Suppress("UnspecifiedRegisterReceiverFlag") registerReceiver(pipReceiver, f)
+        model.onPipStateChanged = {
+            if (android.os.Build.VERSION.SDK_INT >= 26 && model.pip) try { setPictureInPictureParams(pipParams()) } catch (_: Exception) { }
+        }
+    }
+
+    private val pipReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: android.content.Context, i: Intent) {
+            i.getStringExtra("a")?.let { model.pipEvents.tryEmit(it) }
+        }
+    }
+
+    override fun onDestroy() {
+        try { unregisterReceiver(pipReceiver) } catch (_: Exception) { }
+        super.onDestroy()
+    }
+
+    private fun pipAction(code: Int, a: String, icon: Int, label: String): android.app.RemoteAction? {
+        if (android.os.Build.VERSION.SDK_INT < 26) return null
+        val pi = android.app.PendingIntent.getBroadcast(
+            this, code, Intent(PIP_ACTION).setPackage(packageName).putExtra("a", a),
+            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        return android.app.RemoteAction(android.graphics.drawable.Icon.createWithResource(this, icon), label, label, pi)
+    }
+
+    @android.annotation.TargetApi(26)
+    private fun pipParams(): android.app.PictureInPictureParams {
+        val actions = listOfNotNull(
+            if (model.pipCanStep) pipAction(1, "prev", android.R.drawable.ic_media_previous, "Précédent") else null,
+            if (model.pipPlaying) pipAction(2, "toggle", android.R.drawable.ic_media_pause, "Pause")
+            else pipAction(2, "toggle", android.R.drawable.ic_media_play, "Lecture"),
+            if (model.pipCanStep) pipAction(3, "next", android.R.drawable.ic_media_next, "Suivant") else null
+        )
+        return android.app.PictureInPictureParams.Builder()
+            .setAspectRatio(android.util.Rational(16, 9))
+            .setActions(actions)
+            .build()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -49,9 +92,7 @@ class MainActivity : ComponentActivity() {
         // Mini-lecteur quand on quitte l'appli pendant une vidéo (téléphone)
         if (!model.isTv && model.current is Screen.Player && android.os.Build.VERSION.SDK_INT >= 26) {
             try {
-                enterPictureInPictureMode(
-                    android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational(16, 9)).build()
-                )
+                enterPictureInPictureMode(pipParams())
             } catch (_: Exception) { }
         }
     }
