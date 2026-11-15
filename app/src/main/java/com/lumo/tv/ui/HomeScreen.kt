@@ -81,7 +81,7 @@ fun HomeScreen(m: AppModel) {
     val frenchRecent = remember(vods, frCats) {
         vods.filter { it.catId in frCats || it.name.trim().startsWith("FR", ignoreCase = true) }.sortedByDescending { it.added }.take(40)
     }
-    val recentVods = remember(vods, frenchRecent) { frenchRecent.ifEmpty { vods.sortedByDescending { it.added }.take(40) } }
+    val recentVods = remember(vods, frenchRecent) { frenchRecent.ifEmpty { vods.sortedByDescending { it.added }.take(60) } }
     val recentSeries = remember(series) { series.sortedByDescending { it.modified }.take(40) }
     val vodsById = remember(m.vods) { m.vods.associateBy { it.id } }
     val seriesById = remember(m.series) { m.series.associateBy { it.id } }
@@ -175,17 +175,9 @@ fun HomeScreen(m: AppModel) {
             }
         }
         if (recentSeries.isNotEmpty()) item(key = "rser") { FlowOrRow(m, "Séries mises à jour", "rs", recentSeries.take(25), cardW) }
-        // Accueil allégé : 2 catégories de films et 1 de séries (tout le reste est dans les onglets Films / Séries)
-        val cats = m.visibleCats("vod").take(2)
-        cats.forEach { c ->
-            val list = byCat[c.id].orEmpty().take(25)
-            if (list.isNotEmpty()) item(key = "cat" + c.id) { FlowOrRow(m, c.name, "c${c.id}_", list, cardW) }
-        }
-        val scats = m.visibleCats("series").take(1)
-        scats.forEach { c ->
-            val list = serByCat[c.id].orEmpty().take(25)
-            if (list.isNotEmpty()) item(key = "scat" + c.id) { FlowOrRow(m, c.name, "s${c.id}_", list, cardW) }
-        }
+        // Accueil allégé : après « Nouveautés », seulement les séries et les films mis à jour
+        val moreVods = recentVods.drop(25).ifEmpty { recentVods }
+        if (moreVods.isNotEmpty()) item(key = "rvod") { FlowOrRow(m, "Films mis à jour", "rv", moreVods, cardW) }
     }
     }
 }
