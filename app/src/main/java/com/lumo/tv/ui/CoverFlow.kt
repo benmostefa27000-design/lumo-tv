@@ -65,6 +65,10 @@ fun CoverFlow(
     onCurrent: ((Int) -> Unit)? = null,
     centerScale: Float = 1f,
     downTo: androidx.compose.ui.focus.FocusRequester? = null,
+    selectable: Boolean = true,
+    paused: Boolean = false,
+    target: Int = -1,
+    targetKey: Int = 0,
     onOpen: (Int) -> Unit
 ) {
     if (items.isEmpty()) return
@@ -94,14 +98,16 @@ fun CoverFlow(
     }
     // Défilement automatique (en pause quand la télécommande est dessus)
     var touchTick by remember { mutableIntStateOf(0) }
-    LaunchedEffect(autoMs, focused, items.size, touchTick) {
-        while (autoMs > 0 && !focused && last > 0) {
+    LaunchedEffect(autoMs, focused, paused, items.size, touchTick, targetKey) {
+        while (autoMs > 0 && !focused && !paused && last > 0) {
             kotlinx.coroutines.delay(autoMs)
             val c = pos.value.roundToInt()
             pos.animateTo((if (c >= last) 0 else c + 1).toFloat(), androidx.compose.animation.core.tween(1200, easing = androidx.compose.animation.core.CubicBezierEasing(0.45f, 0f, 0.2f, 1f)))
         }
     }
     LaunchedEffect(current) { onCurrent?.invoke(current) }
+    // Pilotage de l'extérieur (ex. ◀ ▶ sur les boutons de l'accueil TV)
+    LaunchedEffect(targetKey) { if (targetKey > 0 && target >= 0) goTo(if (target > last) 0 else target) }
 
     Column(Modifier.fillMaxWidth().padding(top = 18.dp)) {
         if (title != null) SectionTitle(title, Modifier.padding(start = LocalPad.current, bottom = 4.dp))
@@ -123,7 +129,7 @@ fun CoverFlow(
                         else -> false
                     }
                 }
-                .focusable()
+                .focusable(enabled = selectable)
                 .pointerInput(items.size) {
                     val tracker = VelocityTracker()
                     detectHorizontalDragGestures(

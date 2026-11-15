@@ -1,5 +1,9 @@
 package com.lumo.tv.ui
 
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.key
+
 import androidx.compose.animation.togetherWith
 
 import androidx.compose.ui.graphics.Brush
@@ -199,8 +203,13 @@ private fun HeroFlow(m: AppModel, films: List<Vod>) {
         val wide = m.isTv || land
         // Titre + résumé + boutons du film du milieu
         val playFr = remember { androidx.compose.ui.focus.FocusRequester() }
+        var infoFocused by remember { mutableStateOf(false) }
+        var target by remember { mutableIntStateOf(-1) }
+        var targetKey by remember { mutableIntStateOf(0) }
+        fun step(d: Int) { target = ((cur + d) % films.size + films.size) % films.size; targetKey++ }
         @Composable fun Info(center: Boolean) {
             Column(
+                modifier = Modifier.onFocusChanged { infoFocused = it.hasFocus },
                 horizontalAlignment = if (center) Alignment.CenterHorizontally else Alignment.Start,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -223,10 +232,16 @@ private fun HeroFlow(m: AppModel, films: List<Vod>) {
                 }
                 // Les boutons passent à la ligne s'il manque de place (ils restent toujours atteignables)
                 FlowRowCompat(spacing = 12.dp, center = center) {
-                    LumoButton("Lecture", requester = playFr, icon = { Icon(Icons.Default.PlayArrow, null, tint = Color.Black) }) {
+                    // TV : ◀ sur « Lecture » = film précédent
+                    LumoButton("Lecture", requester = playFr, modifier = Modifier.onPreviewKeyEvent { e ->
+                        if (m.isTv && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && e.key == androidx.compose.ui.input.key.Key.DirectionLeft) { step(-1); true } else false
+                    }, icon = { Icon(Icons.Default.PlayArrow, null, tint = Color.Black) }) {
                         m.go(Screen.Player(com.lumo.tv.Playable.Movie(v)))
                     }
-                    LumoButton("Plus d'infos", primary = false, icon = { Icon(Icons.Default.Info, null, tint = Color.White) }) {
+                    // TV : ▶ sur « Plus d'infos » = film suivant
+                    LumoButton("Plus d'infos", primary = false, modifier = Modifier.onPreviewKeyEvent { e ->
+                        if (m.isTv && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && e.key == androidx.compose.ui.input.key.Key.DirectionRight) { step(1); true } else false
+                    }, icon = { Icon(Icons.Default.Info, null, tint = Color.White) }) {
                         m.go(Screen.MovieDetail(v))
                     }
                 }
@@ -240,7 +255,8 @@ private fun HeroFlow(m: AppModel, films: List<Vod>) {
                         title = null, items = flow, isTv = m.isTv, startIndex = cur,
                         width = if (m.isTv) 150.dp else 105.dp,
                         autoMs = 5000, showCaption = false, onCurrent = { cur = it }, centerScale = 1.45f,
-                        downTo = if (m.isTv) playFr else null
+                        // TV : la télécommande va directement sur les boutons (les affiches défilent toutes seules)
+                        selectable = !m.isTv, paused = infoFocused, target = target, targetKey = targetKey
                     ) { i -> m.go(Screen.MovieDetail(films[i])) }
                 }
                 Box(Modifier.weight(0.34f).padding(end = LocalPad.current, start = 4.dp)) { Info(center = false) }

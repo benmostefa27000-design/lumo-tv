@@ -89,7 +89,7 @@ fun LiveScreen(m: AppModel) {
             horizontalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
-            LazyColumn(Modifier.width(250.dp).fillMaxHeight().focusRequester(catFr).focusRestorer().focusGroup(), verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+            LazyColumn(Modifier.width(250.dp).fillMaxHeight().focusRequester(catFr).focusGroup(), verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
                 item(key = "__sort") { Chip(sortLabel, false) { nextSort() } }
                 items(catItems, key = { it.first }) { (id, name) ->
                     FocusBox(modifier = Modifier.fillMaxWidth(), scale = 1.03f, onClick = { sel = id }) { f ->
@@ -104,7 +104,7 @@ fun LiveScreen(m: AppModel) {
                 }
             }
             @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
-            ChannelList(m, list, Modifier.weight(1f).focusRequester(chanFr).focusRestorer().focusGroup())
+            ChannelList(m, list, Modifier.weight(1f).focusRequester(chanFr).focusGroup())
         }
     } else {
         Column(Modifier.fillMaxSize()) {
