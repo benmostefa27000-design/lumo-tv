@@ -1,5 +1,15 @@
 package com.lumo.tv.ui
 
+import androidx.compose.ui.focus.focusRequester
+
+import androidx.compose.ui.focus.FocusRequester
+
+import androidx.compose.ui.input.key.type
+
+import androidx.compose.ui.input.key.key
+
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+
 import androidx.compose.ui.draw.clip
 
 import androidx.compose.runtime.getValue
@@ -70,13 +80,23 @@ fun LumoApp(m: AppModel) {
             }
 
             m.removeAsk?.let { p ->
+                // Télécommande : la fenêtre s'ouvre pendant que OK est encore enfoncé (appui long).
+                // On ignore OK jusqu'à ce qu'il soit relâché, sinon le relâchement validait « Annuler » tout de suite.
+                var armed by remember(p) { mutableStateOf(false) }
+                LaunchedEffect(p) { kotlinx.coroutines.delay(1500); armed = true }
+                val guard = Modifier.onPreviewKeyEvent { e ->
+                    val ok = e.key == androidx.compose.ui.input.key.Key.DirectionCenter || e.key == androidx.compose.ui.input.key.Key.Enter || e.key == androidx.compose.ui.input.key.Key.NumPadEnter
+                    if (!armed && ok) { if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyUp) armed = true; true } else false
+                }
+                val retirerFr = remember { FocusRequester() }
+                LaunchedEffect(p) { kotlinx.coroutines.delay(100); try { retirerFr.requestFocus() } catch (_: Exception) { } }
                 AlertDialog(
                     onDismissRequest = { m.removeAsk = null },
                     containerColor = C.Card,
                     title = { Text("Reprendre la lecture", color = Color.White) },
-                    text = { Text("Retirer « ${p.title} » de la liste ?", color = C.Sub) },
-                    confirmButton = { TextButton(onClick = { m.removeFromContinue(p); m.removeAsk = null }) { Text("Retirer", color = C.Red) } },
-                    dismissButton = { TextButton(onClick = { m.removeAsk = null }) { Text("Annuler", color = C.Sub) } }
+                    text = { Text("Retirer « ${com.lumo.tv.data.TmdbArt.split(p.title).first.ifBlank { p.title }} » de la liste ?", color = C.Sub) },
+                    confirmButton = { TextButton(modifier = guard.focusRequester(retirerFr), onClick = { m.removeFromContinue(p); m.removeAsk = null }) { Text("Retirer", color = C.Red) } },
+                    dismissButton = { TextButton(modifier = guard, onClick = { m.removeAsk = null }) { Text("Annuler", color = C.Sub) } }
                 )
             }
 
