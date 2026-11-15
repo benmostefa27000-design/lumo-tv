@@ -237,11 +237,11 @@ private fun TabPage(m: AppModel, tab: Tab) {
 @Composable
 private fun TvTopBar(m: AppModel) {
     Row(
-        Modifier.fillMaxWidth().padding(start = 48.dp, end = 48.dp, top = 18.dp, bottom = 8.dp),
+        Modifier.fillMaxWidth().padding(start = 48.dp, end = 48.dp, top = 8.dp, bottom = 0.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        LumoLogo(34)
+        LumoLogo(28)
         Spacer(Modifier.width(18.dp))
         val fr = rememberAutoFocus(true)
         listOf(Tab.Home, Tab.Live, Tab.Movies, Tab.Series, Tab.MyList).forEach { t ->
@@ -251,10 +251,10 @@ private fun TvTopBar(m: AppModel) {
                 FocusBox(shape = RoundedCornerShape(12.dp), scale = 1.06f, border = false, requester = if (t == m.tab) fr else null, onClick = { m.tab = t }) { f ->
                     // Changement d'onglet juste en passant dessus avec les flèches (pas besoin de OK)
                     LaunchedEffect(f) { tf = f; if (f && m.tab != t) { kotlinx.coroutines.delay(220); m.tab = t } }
-                    TabChip(t, selected = m.tab == t, focused = f)
+                    TabChip(t, selected = m.tab == t, focused = f, small = true)
                 }
-                Box(Modifier.height(20.dp).padding(top = 3.dp), contentAlignment = Alignment.Center) {
-                    if (tf) Text(if (t == Tab.Live) "Direct" else t.label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                Box(Modifier.height(14.dp).padding(top = 1.dp), contentAlignment = Alignment.Center) {
+                    if (tf) Text(if (t == Tab.Live) "Direct" else t.label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
                     else if (m.tab == t) Box(Modifier.size(width = 12.dp, height = 2.dp).background(C.Red, RoundedCornerShape(1.dp)))
                 }
             }
