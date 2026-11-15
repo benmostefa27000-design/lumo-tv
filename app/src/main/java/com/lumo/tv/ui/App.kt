@@ -1,5 +1,11 @@
 package com.lumo.tv.ui
 
+import androidx.compose.runtime.getValue
+
+import androidx.compose.ui.graphics.graphicsLayer
+
+import androidx.compose.animation.core.animateFloat
+
 import androidx.compose.animation.togetherWith
 
 import androidx.compose.ui.semantics.semantics
@@ -115,7 +121,8 @@ private fun TabContent(m: AppModel) {
 
 @Composable
 private fun TabBody(m: AppModel) {
-    // Animation entre les onglets : glissement dans le sens du changement + fondu
+    if (m.isTv) { TvCubeTabs(m); return }
+    // Téléphone : glissement dans le sens du changement + fondu
     androidx.compose.animation.AnimatedContent(
         targetState = m.tab,
         transitionSpec = {
@@ -128,6 +135,44 @@ private fun TabBody(m: AppModel) {
         },
         label = "tabs"
     ) { tab -> TabPage(m, tab) }
+}
+
+/** TV : les pages tournent comme les faces d'un cube, dans le sens de la flèche. */
+@Composable
+private fun TvCubeTabs(m: AppModel) {
+    val dirState = remember { androidx.compose.runtime.mutableIntStateOf(1) }
+    val density = androidx.compose.ui.platform.LocalDensity.current.density
+    androidx.compose.animation.AnimatedContent(
+        targetState = m.tab,
+        transitionSpec = {
+            dirState.intValue = if (targetState.ordinal > initialState.ordinal) 1 else -1
+            androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(700), initialAlpha = 0.5f) togetherWith
+                androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(700), targetAlpha = 0.3f)
+        },
+        label = "cube",
+        modifier = Modifier.fillMaxSize()
+    ) { tab ->
+        val p by transition.animateFloat(
+            transitionSpec = { androidx.compose.animation.core.tween(700, easing = androidx.compose.animation.core.FastOutSlowInEasing) },
+            label = "cubeP"
+        ) { st ->
+            when (st) {
+                androidx.compose.animation.EnterExitState.PreEnter -> 1f
+                androidx.compose.animation.EnterExitState.Visible -> 0f
+                androidx.compose.animation.EnterExitState.PostExit -> -1f
+            }
+        }
+        val d = dirState.intValue
+        Box(
+            Modifier.fillMaxSize().graphicsLayer {
+                val k = p * d
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(if (k > 0f) 0f else 1f, 0.5f)
+                translationX = k * size.width
+                rotationY = k * 90f
+                cameraDistance = 14f * density
+            }
+        ) { TabPage(m, tab) }
+    }
 }
 
 @Composable
