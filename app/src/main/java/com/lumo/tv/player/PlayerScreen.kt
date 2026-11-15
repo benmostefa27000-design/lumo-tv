@@ -435,10 +435,10 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     DisposableEffect(Unit) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) { m.updatePip(player.playWhenReady, m.pipCanStep) }
-            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { m.updatePip(playWhenReady, m.pipCanStep) }
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) { tracksTick++ }
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 paused = !playWhenReady
+                m.updatePip(playWhenReady, m.pipCanStep)
             }
 
             override fun onPlaybackStateChanged(state: Int) {
