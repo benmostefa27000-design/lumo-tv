@@ -138,6 +138,36 @@ fun SettingsScreen(m: AppModel) {
             SettingRow("Sources", (if (cur != null) "En cours : $cur" else "Ton abonnement") + if (n > 1) " · $n sources" else " · ajouter un autre abonnement") { m.go(Screen.Sources) }
         }
         item { SettingRow("Gérer les catégories", "Tout sélectionner, supprimer, restaurer") { m.go(Screen.Categories) } }
+        if (!m.isTv) item {
+            var open by remember { mutableStateOf(false) }
+            var withVod by remember { mutableStateOf(false) }
+            var busy by remember { mutableStateOf(false) }
+            val scope = rememberCoroutineScope()
+            SettingRow("Exporter en liste M3U", "Pour Fermata Auto, VLC… avec seulement tes catégories") { open = true }
+            if (open) androidx.compose.material3.AlertDialog(
+                onDismissRequest = { if (!busy) open = false },
+                containerColor = C.Card,
+                title = { Text("Exporter en M3U", color = Color.White) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Crée un fichier Lumo.m3u avec les chaînes des catégories que tu as gardées (et tes favoris en premier). Le fichier contient tes identifiants : ne le partage pas.", color = C.Sub, fontSize = 14.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.Checkbox(withVod, { withVod = it })
+                            Text("Ajouter aussi les films", color = Color.White, fontSize = 15.sp)
+                        }
+                    }
+                },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = {
+                        busy = true
+                        scope.launch { m.showToast(m.saveM3u(withVod)); busy = false; open = false }
+                    }) { Text(if (busy) "…" else "Enregistrer", color = C.Red) }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { scope.launch { m.shareM3u(withVod); open = false } }) { Text("Envoyer à…", color = C.Sub) }
+                }
+            )
+        }
         if (!m.isTv) item { SettingRow("Connecter une TV", "Avec le code ou le QR code affiché sur la TV") { m.go(Screen.PairPhone) } }
         if (!m.isTv) item {
             SettingRow("Télécommande", "Piloter une TV où Lumo est ouvert") {

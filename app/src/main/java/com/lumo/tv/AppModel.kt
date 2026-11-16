@@ -250,6 +250,83 @@ class AppModel(private val context: Context) {
         } catch (e: Exception) { "Connexion impossible : ${e.message ?: "erreur réseau"}" }
     }
 
+    // ---------- Export M3U (Fermata Auto, VLC…) : seulement les catégories gardées ----------
+
+    /** Liste M3U de la source en cours, limitée aux catégories gardées (le filtre permanent s'applique déjà au catalogue). */
+    fun buildM3u(includeVod: Boolean): String {
+        val acc = store.account ?: return ""
+        val c = client ?: return ""
+        fun q(v: String) = v.replace("\"", "'").replace("\n", " ")
+        val enc = { v: String -> java.net.URLEncoder.encode(v, "UTF-8") }
+        val epg = "${acc.server}/xmltv.php?username=${enc(acc.user)}&password=${enc(acc.pass)}"
+        val sb = StringBuilder("#EXTM3U url-tvg=\"$epg\" x-tvg-url=\"$epg\"\n")
+        val fmt = if (store.liveFormat == "m3u8") "m3u8" else "ts"
+        fun liveLine(s: LiveStream, group: String) {
+            sb.append("#EXTINF:-1 tvg-id=\"${q(s.epgId)}\" tvg-name=\"${q(s.name)}\" tvg-logo=\"${q(s.icon)}\" group-title=\"${q(group)}\"")
+            if (s.archive) sb.append(" catchup=\"xc\" catchup-days=\"${s.archiveDays}\"")
+            sb.append(",").append(s.name).append("\n").append(c.liveUrl(s.id, fmt)).append("\n")
+        }
+        val liveCatIds = allowedCatIds("live")
+        val favIds = store.favs(pid, "live")
+        live.filter { it.id in favIds && it.catId in liveCatIds }.sortedBy { it.num }.forEach { liveLine(it, "★ Favoris") }
+        val byCat = live.groupBy { it.catId }
+        visibleCats("live").forEach { cat -> byCat[cat.id].orEmpty().sortedBy { it.num }.forEach { liveLine(it, cat.name) } }
+        if (includeVod) {
+            val vByCat = vods.groupBy { it.catId }
+            visibleCats("vod").forEach { cat ->
+                vByCat[cat.id].orEmpty().forEach { v ->
+                    sb.append("#EXTINF:-1 tvg-name=\"${q(v.name)}\" tvg-logo=\"${q(v.icon)}\" group-title=\"Films · ${q(cat.name)}\",").append(v.name).append("\n")
+                        .append(c.vodUrl(v.id, v.ext.ifBlank { "mp4" })).append("\n")
+                }
+            }
+        }
+        return sb.toString()
+    }
+
+    /** Enregistre la liste dans Téléchargements (Lumo.m3u). Renvoie un message pour l'utilisateur. */
+    suspend fun saveM3u(includeVod: Boolean): String = withContext(Dispatchers.IO) {
+        val text = buildM3u(includeVod)
+        if (text.isBlank()) return@withContext "Aucune source chargée"
+        val name = "Lumo.m3u"
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                val r = context.contentResolver
+                val col = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
+                // Remplace l'ancien fichier s'il existe
+                r.delete(col, "${android.provider.MediaStore.MediaColumns.DISPLAY_NAME}=?", arrayOf(name))
+                val v = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name)
+                    put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "audio/x-mpegurl")
+                    put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+                }
+                val uri = r.insert(col, v) ?: return@withContext "Impossible d'enregistrer le fichier"
+                r.openOutputStream(uri)?.use { it.write(text.toByteArray()) }
+                "Enregistré dans Téléchargements/$name"
+            } else {
+                val dir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS) ?: return@withContext "Impossible d'enregistrer le fichier"
+                java.io.File(dir, name).writeText(text)
+                "Enregistré dans ${dir.absolutePath}/$name"
+            }
+        } catch (e: Exception) { "Erreur : ${e.message}" }
+    }
+
+    /** Envoie la liste à une autre appli (Fermata, VLC, fichiers…). */
+    suspend fun shareM3u(includeVod: Boolean) {
+        val text = buildM3u(includeVod)
+        if (text.isBlank()) { showToast("Aucune source chargée"); return }
+        val f = withContext(Dispatchers.IO) {
+            val dir = java.io.File(context.cacheDir, "exports").apply { mkdirs() }
+            java.io.File(dir, "Lumo.m3u").apply { writeText(text) }
+        }
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, "com.lumo.tv.files", f)
+        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "audio/x-mpegurl"
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(android.content.Intent.createChooser(send, "Envoyer la liste M3U").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
     fun logout() {
         store.clearAll()
         client = null
