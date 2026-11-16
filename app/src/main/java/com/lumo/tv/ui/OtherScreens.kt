@@ -141,6 +141,8 @@ fun SettingsScreen(m: AppModel) {
         if (!m.isTv) item {
             var open by remember { mutableStateOf(false) }
             var withVod by remember { mutableStateOf(false) }
+            val autoCount = run { m.store.version; m.store.favs(m.pid, "auto").size }
+            var onlyAuto by remember(autoCount) { mutableStateOf(autoCount > 0) }
             var busy by remember { mutableStateOf(false) }
             val scope = rememberCoroutineScope()
             SettingRow("Exporter en liste M3U", "Pour Fermata Auto, VLC… avec seulement tes catégories") { open = true }
@@ -152,6 +154,14 @@ fun SettingsScreen(m: AppModel) {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("Crée un fichier Lumo.m3u avec les chaînes des catégories que tu as gardées (et tes favoris en premier). Le fichier contient tes identifiants : ne le partage pas.", color = C.Sub, fontSize = 14.sp)
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.RadioButton(onlyAuto, { onlyAuto = true }, enabled = autoCount > 0)
+                            Text("🚗 Liste Voiture ($autoCount chaînes)" + if (autoCount == 0) " — vide" else "", color = if (autoCount > 0) Color.White else C.Sub, fontSize = 15.sp)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.RadioButton(!onlyAuto, { onlyAuto = false })
+                            Text("Mes catégories gardées", color = Color.White, fontSize = 15.sp)
+                        }
+                        if (!onlyAuto) Row(verticalAlignment = Alignment.CenterVertically) {
                             androidx.compose.material3.Checkbox(withVod, { withVod = it })
                             Text("Ajouter aussi les films", color = Color.White, fontSize = 15.sp)
                         }
@@ -160,11 +170,11 @@ fun SettingsScreen(m: AppModel) {
                 confirmButton = {
                     androidx.compose.material3.TextButton(onClick = {
                         busy = true
-                        scope.launch { m.showToast(m.saveM3u(withVod)); busy = false; open = false }
+                        scope.launch { m.showToast(m.saveM3u(withVod && !onlyAuto, onlyAuto)); busy = false; open = false }
                     }) { Text(if (busy) "…" else "Enregistrer", color = C.Red) }
                 },
                 dismissButton = {
-                    androidx.compose.material3.TextButton(onClick = { scope.launch { m.shareM3u(withVod); open = false } }) { Text("Envoyer à…", color = C.Sub) }
+                    androidx.compose.material3.TextButton(onClick = { scope.launch { m.shareM3u(withVod && !onlyAuto, onlyAuto); open = false } }) { Text("Envoyer à…", color = C.Sub) }
                 }
             )
         }

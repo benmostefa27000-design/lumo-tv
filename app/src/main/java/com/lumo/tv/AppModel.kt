@@ -253,7 +253,7 @@ class AppModel(private val context: Context) {
     // ---------- Export M3U (Fermata Auto, VLC…) : seulement les catégories gardées ----------
 
     /** Liste M3U de la source en cours, limitée aux catégories gardées (le filtre permanent s'applique déjà au catalogue). */
-    fun buildM3u(includeVod: Boolean): String {
+    fun buildM3u(includeVod: Boolean, onlyAuto: Boolean = false): String {
         val acc = store.account ?: return ""
         val c = client ?: return ""
         fun q(v: String) = v.replace("\"", "'").replace("\n", " ")
@@ -265,6 +265,11 @@ class AppModel(private val context: Context) {
             sb.append("#EXTINF:-1 tvg-id=\"${q(s.epgId)}\" tvg-name=\"${q(s.name)}\" tvg-logo=\"${q(s.icon)}\" group-title=\"${q(group)}\"")
             if (s.archive) sb.append(" catchup=\"xc\" catchup-days=\"${s.archiveDays}\"")
             sb.append(",").append(s.name).append("\n").append(c.liveUrl(s.id, fmt)).append("\n")
+        }
+        if (onlyAuto) {
+            val autoIds = store.favs(pid, "auto")
+            sortLive(live.filter { it.id in autoIds }, "tnt").forEach { liveLine(it, "Voiture") }
+            return sb.toString()
         }
         val liveCatIds = allowedCatIds("live")
         val favIds = store.favs(pid, "live")
@@ -284,10 +289,10 @@ class AppModel(private val context: Context) {
     }
 
     /** Enregistre la liste dans Téléchargements (Lumo.m3u). Renvoie un message pour l'utilisateur. */
-    suspend fun saveM3u(includeVod: Boolean): String = withContext(Dispatchers.IO) {
-        val text = buildM3u(includeVod)
+    suspend fun saveM3u(includeVod: Boolean, onlyAuto: Boolean = false): String = withContext(Dispatchers.IO) {
+        val text = buildM3u(includeVod, onlyAuto)
         if (text.isBlank()) return@withContext "Aucune source chargée"
-        val name = "Lumo.m3u"
+        val name = if (onlyAuto) "Lumo-Voiture.m3u" else "Lumo.m3u"
         try {
             if (android.os.Build.VERSION.SDK_INT >= 29) {
                 val r = context.contentResolver
@@ -311,12 +316,12 @@ class AppModel(private val context: Context) {
     }
 
     /** Envoie la liste à une autre appli (Fermata, VLC, fichiers…). */
-    suspend fun shareM3u(includeVod: Boolean) {
-        val text = buildM3u(includeVod)
+    suspend fun shareM3u(includeVod: Boolean, onlyAuto: Boolean = false) {
+        val text = buildM3u(includeVod, onlyAuto)
         if (text.isBlank()) { showToast("Aucune source chargée"); return }
         val f = withContext(Dispatchers.IO) {
             val dir = java.io.File(context.cacheDir, "exports").apply { mkdirs() }
-            java.io.File(dir, "Lumo.m3u").apply { writeText(text) }
+            java.io.File(dir, if (onlyAuto) "Lumo-Voiture.m3u" else "Lumo.m3u").apply { writeText(text) }
         }
         val uri = androidx.core.content.FileProvider.getUriForFile(context, "com.lumo.tv.files", f)
         val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
@@ -444,6 +449,40 @@ class AppModel(private val context: Context) {
 
     fun isFav(kind: String, id: String): Boolean { store.version; return id in store.favs(pid, kind) }
     fun toggleFav(kind: String, id: String) { commit(store.toggleFav(pid, kind, id)) }
+
+    // ---------- Liste « Voiture » (chaînes légères pour Fermata Auto / Android Auto) ----------
+
+    private val qualityTag = Regex("""(?i)\b(4k|uhd|fhd|hd|sd|lq|hq|hevc|h\.?26[45]|raw|50fps|60fps|backup|vip)\b|[ᴬ-ᵡ]+|\(.*?\)|\[.*?]""")
+
+    /** Nom de base d'une chaîne, sans préfixe pays ni qualité : « FR| TF1 HD RAW » → « tf1 ». */
+    private fun baseName(n: String) = n.substringAfter("|", n).replace(qualityTag, " ")
+        .lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), "")
+
+    /** 0 = le plus léger (LQ/SD) … 5 = le plus lourd (4K/UHD, RAW). */
+    private fun qualityRank(n: String): Int {
+        val u = n.uppercase()
+        var r = when {
+            Regex("\\b(LQ|SD)\\b").containsMatchIn(u) -> 0
+            Regex("\\b(4K|UHD)\\b").containsMatchIn(u) -> 4
+            Regex("\\bFHD\\b").containsMatchIn(u) -> 3
+            Regex("\\bHD\\b").containsMatchIn(u) -> 2
+            else -> 1
+        }
+        if (u.contains("RAW") || n.contains("ᴿᴬᵂ")) r += 1
+        return r
+    }
+
+    /** Ajoute à « Voiture » la version la plus légère de chaque chaîne favorite. Renvoie le nombre ajouté. */
+    fun fillAutoFromFavs(): Int {
+        val favIds = store.favs(pid, "live")
+        if (favIds.isEmpty()) return 0
+        val byBase = live.groupBy { baseName(it.name) }
+        val picks = live.filter { it.id in favIds }.mapNotNull { f ->
+            byBase[baseName(f.name)]?.minByOrNull { qualityRank(it.name) * 10 + (if (it.catId == f.catId) 0 else 1) }?.id
+        }.toSet() - store.favs(pid, "auto")
+        if (picks.isNotEmpty()) commit(store.addFavs(pid, "auto", picks))
+        return picks.size
+    }
 
     fun deleted(kind: String): Set<String> { store.version; return store.deletedCats(kind) }
     fun setDeleted(kind: String, ids: Set<String>) { commit(store.setDeletedCats(kind, ids)) }

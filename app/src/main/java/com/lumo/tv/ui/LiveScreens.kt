@@ -1,5 +1,11 @@
 package com.lumo.tv.ui
 
+import androidx.compose.ui.draw.clip
+
+import androidx.compose.foundation.clickable
+
+import androidx.compose.foundation.Canvas
+
 import androidx.compose.ui.focus.focusRestorer
 
 import androidx.compose.ui.focus.focusRequester
@@ -47,6 +53,7 @@ import java.util.*
 private const val FAV = "__fav"
 private const val ALL = "__all"
 private const val REPLAY = "__replay"
+private const val AUTO = "__auto"
 
 @Composable
 fun LiveScreen(m: AppModel) {
@@ -63,9 +70,11 @@ fun LiveScreen(m: AppModel) {
     // le curseur ne saute pas, et on peut en retirer plusieurs d'affilée ou se rattraper.
     var favShown by remember(sel) { mutableStateOf(favs.toSet()) }
     LaunchedEffect(favs) { if (sel == FAV) favShown = favShown + favs }
-    val list = remember(sel, m.live, visibleIds, favShown, sortMode) {
+    val autos = run { m.store.version; m.store.favs(m.pid, "auto") }
+    val list = remember(sel, m.live, visibleIds, favShown, sortMode, autos) {
         val raw = when (sel) {
             FAV -> m.live.filter { it.id in favShown }
+            AUTO -> m.live.filter { it.id in autos }
             ALL -> m.live.filter { it.catId in visibleIds }
             REPLAY -> m.live.filter { it.archive && it.catId in visibleIds }
             else -> m.live.filter { it.catId == sel }
@@ -76,7 +85,8 @@ fun LiveScreen(m: AppModel) {
     val nextSort = { val keys = sortLabels.keys.toList(); m.setLiveSort(keys[(keys.indexOf(sortMode) + 1) % keys.size]) }
     val sortLabel = "⇅ " + (sortLabels[sortMode] ?: "Ordre TNT")
     val hasReplay = remember(m.live, visibleIds) { m.live.any { it.archive && it.catId in visibleIds } }
-    val catItems = listOf(FAV to "★ Favoris") + (if (hasReplay) listOf(REPLAY to "⟲ Rattrapage") else emptyList()) + cats.map { it.id to it.name }
+    // Téléphone : liste « Voiture » (chaînes légères pour Fermata Auto)
+    val catItems = listOf(FAV to "★ Favoris") + (if (!m.isTv) listOf(AUTO to "🚗 Voiture") else emptyList()) + (if (hasReplay) listOf(REPLAY to "⟲ Rattrapage") else emptyList()) + cats.map { it.id to it.name }
 
     if (m.isTv) {
         // En descendant depuis les onglets, on arrive d'abord sur les chaînes (les catégories sont à gauche)
@@ -109,6 +119,10 @@ fun LiveScreen(m: AppModel) {
     } else {
         // Téléphone : les catégories en bas, près du pouce
         Column(Modifier.fillMaxSize()) {
+            if (sel == AUTO) AutoHeader(m, autos.size)
+            if (sel == AUTO && list.isEmpty()) Box(Modifier.weight(1f)) {
+                Empty("Ajoute ici des chaînes légères (versions SD/LQ/HD plutôt que 4K) avec l'icône voiture, ou touche « Versions légères de mes favoris ». Puis exporte-les depuis Réglages → Exporter en liste M3U.")
+            } else
             ChannelList(m, list, Modifier.weight(1f).padding(horizontal = 12.dp))
             LazyRow(Modifier.fillMaxWidth().background(Color(0xFF0E0E0E)), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 item(key = "__sort") { Chip(sortLabel, false) { nextSort() } }
@@ -157,6 +171,15 @@ private fun ChannelRow(m: AppModel, s: LiveStream, list: List<LiveStream>, index
         }
         IconFocus(Icons.Default.Star, if (fav) "Retirer des favoris" else "Ajouter aux favoris", tint = if (fav) Color(0xFFF2B33D) else Color(0xFF5A5A5A)) {
             m.toggleFav("live", s.id)
+        }
+        if (!m.isTv) {
+            val car = run { m.store.version; s.id in m.store.favs(m.pid, "auto") }
+            Box(
+                Modifier.size(40.dp).clip(RoundedCornerShape(50)).clickable {
+                    m.toggleFav("auto", s.id); m.showToast(if (car) "Retirée de « Voiture »" else "Ajoutée à « Voiture » 🚗")
+                },
+                contentAlignment = Alignment.Center
+            ) { Canvas(Modifier.size(24.dp)) { drawCar(if (car) Color(0xFF4FC3F7) else Color(0xFF5A5A5A)) } }
         }
         if (s.archive) {
             IconFocus(Icons.Default.DateRange, "Rattrapage") { m.go(Screen.ChannelGuide(s, list)) }
@@ -255,4 +278,32 @@ fun askNotificationPermission(ctx: android.content.Context) {
     ) {
         androidx.core.app.ActivityCompat.requestPermissions(act, arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 7)
     }
+}
+
+
+/** En-tête de la liste « Voiture » : remplissage automatique avec les versions légères des favoris. */
+@Composable
+private fun AutoHeader(m: AppModel, count: Int) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("$count chaîne${if (count > 1) "s" else ""} pour la voiture", color = C.Sub, fontSize = 13.sp, modifier = Modifier.weight(1f))
+        Chip("⚡ Versions légères de mes favoris", false) {
+            val n = m.fillAutoFromFavs()
+            m.showToast(if (n > 0) "$n chaîne${if (n > 1) "s" else ""} ajoutée${if (n > 1) "s" else ""}" else "Rien à ajouter (ajoute d'abord des favoris ★)")
+        }
+    }
+}
+
+/** Petite voiture vue de côté. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCar(c: Color) {
+    val w = size.width; val h = size.height
+    val body = androidx.compose.ui.graphics.Path().apply {
+        moveTo(w * 0.06f, h * 0.68f); lineTo(w * 0.06f, h * 0.52f); lineTo(w * 0.22f, h * 0.48f)
+        lineTo(w * 0.34f, h * 0.30f); lineTo(w * 0.66f, h * 0.30f); lineTo(w * 0.80f, h * 0.48f)
+        lineTo(w * 0.94f, h * 0.53f); lineTo(w * 0.94f, h * 0.68f); close()
+    }
+    drawPath(body, c)
+    drawCircle(Color(0xFF151515), w * 0.11f, androidx.compose.ui.geometry.Offset(w * 0.27f, h * 0.70f))
+    drawCircle(Color(0xFF151515), w * 0.11f, androidx.compose.ui.geometry.Offset(w * 0.73f, h * 0.70f))
+    drawCircle(c, w * 0.075f, androidx.compose.ui.geometry.Offset(w * 0.27f, h * 0.70f))
+    drawCircle(c, w * 0.075f, androidx.compose.ui.geometry.Offset(w * 0.73f, h * 0.70f))
 }

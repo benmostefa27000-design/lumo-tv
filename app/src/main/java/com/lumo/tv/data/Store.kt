@@ -229,6 +229,16 @@ class Store(context: Context) {
     fun favs(pid: String, kind: String): Set<String> =
         csv(doc.optJSONObject("p")?.optJSONObject(pid)?.optJSONObject("favs")?.optString(kind) ?: "")
 
+    fun addFavs(pid: String, kind: String, ids: Collection<String>): Change {
+        val f = obj(profileDoc(pid), "favs")
+        val set = csv(f.optString(kind)).toMutableSet()
+        set.addAll(ids)
+        f.put(kind, set.joinToString(","))
+        f.put("ts", now())
+        save()
+        return Change("p/$pid/favs", JSONObject(f.toString()))
+    }
+
     fun toggleFav(pid: String, kind: String, id: String): Change {
         val f = obj(profileDoc(pid), "favs")
         val set = csv(f.optString(kind)).toMutableSet()
