@@ -473,7 +473,7 @@ private fun Hero(m: AppModel, v: Vod, onNoImage: () -> Unit = {}) {
     }
 }
 
-/** Bandeau d'accueil TV façon Fire TV : grande image à droite fondue dans le noir, infos et boutons à gauche. */
+/** Accueil TV « cinéma » : image du film en plein écran, titre fin et espacé, badges, boutons en pilule. */
 @Composable
 private fun FireHero(m: AppModel, v: Vod, count: Int, index: Int, onStep: (Int) -> Unit, onNoImage: () -> Unit) {
     val infos = remember { mutableStateMapOf<String, VodInfo?>() }
@@ -485,15 +485,11 @@ private fun FireHero(m: AppModel, v: Vod, count: Int, index: Int, onStep: (Int) 
             plots[v.id] = inf?.plot?.trim().orEmpty().ifBlank { withContext(Dispatchers.IO) { com.lumo.tv.data.TmdbArt.overview("movie", v.name) } }
         }
     }
-    val bg = Color(0xFF101014)
-    val h = screenHeightDp() * 0.62f
-    Box(
-        Modifier.fillMaxWidth().padding(horizontal = LocalPad.current, vertical = 6.dp).height(h)
-            .clip(RoundedCornerShape(12.dp)).background(bg)
-    ) {
-        // Image à droite (2/3 de la largeur), fondue vers la gauche et vers le bas
-        androidx.compose.animation.Crossfade(targetState = v, animationSpec = androidx.compose.animation.core.tween(900), label = "fireImg",
-            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().fillMaxWidth(0.68f)) { f ->
+    val bg = C.Bg
+    // Hauteur : le haut de la première rangée dépasse en bas de l'écran
+    val h = screenHeightDp() * 0.80f
+    Box(Modifier.fillMaxWidth().height(h)) {
+        androidx.compose.animation.Crossfade(targetState = v, animationSpec = androidx.compose.animation.core.tween(900), label = "cineImg", modifier = Modifier.fillMaxSize()) { f ->
             val art = rememberTmdbArt("movie", f.name)
             val imgs = listOfNotNull(art?.backdrop?.ifBlank { null }, infos[f.id]?.backdrop?.ifBlank { null }, f.icon.ifBlank { null }).distinct()
             var ci by remember(f.id, imgs.size) { mutableIntStateOf(0) }
@@ -502,31 +498,32 @@ private fun FireHero(m: AppModel, v: Vod, count: Int, index: Int, onStep: (Int) 
                     AsyncImage(model = img, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
                         onError = { if (ci + 1 < imgs.size) ci++ else if (f.id == v.id) onNoImage() })
                 }
-                Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to bg, 0.45f to bg.copy(alpha = 0.55f), 1f to Color.Transparent)))
-                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.6f to Color.Transparent, 1f to bg.copy(alpha = 0.8f))))
             }
         }
-        // Infos à gauche
+        // Dégradés : sombre à gauche (texte lisible) et en bas (continuité avec les rangées)
+        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to bg.copy(alpha = 0.95f), 0.38f to bg.copy(alpha = 0.7f), 0.75f to Color.Transparent)))
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to bg)))
         Column(
-            Modifier.align(Alignment.CenterStart).fillMaxWidth(0.48f).padding(start = 36.dp, end = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            Modifier.align(Alignment.CenterStart).fillMaxWidth(0.5f).padding(start = 48.dp, top = 40.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            androidx.compose.animation.AnimatedContent(targetState = v, label = "fireTxt", transitionSpec = {
+            androidx.compose.animation.AnimatedContent(targetState = v, label = "cineTxt", transitionSpec = {
                 androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(500)) togetherWith androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(250))
             }) { f ->
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(com.lumo.tv.data.Tmdb.cleanName(f.name).ifBlank { f.name }, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Black,
-                        lineHeight = 38.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    CinemaTitle(f.name, 40.sp)
                     val inf = infos[f.id]
-                    val meta = listOfNotNull(
-                        inf?.year?.ifBlank { null } ?: com.lumo.tv.data.TmdbArt.split(f.name).second.ifBlank { null },
-                        "Film",
-                        inf?.genre?.ifBlank { null }?.split(",")?.firstOrNull()?.trim(),
-                        f.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { "★ %.1f".format(it) }
-                    ).joinToString(" · ")
-                    Text(meta, color = C.Sub, fontSize = 14.sp, maxLines = 1)
+                    MetaLine(
+                        listOfNotNull(
+                            inf?.year?.ifBlank { null } ?: com.lumo.tv.data.TmdbArt.split(f.name).second.ifBlank { null },
+                            prettyDuration(inf?.duration),
+                            inf?.genre?.ifBlank { null }?.split(",")?.firstOrNull()?.trim(),
+                            f.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { "★ %.1f".format(it) }
+                        ),
+                        versionBadges(f.name)
+                    )
                     plots[f.id]?.takeIf { it.isNotBlank() }?.let {
-                        Text(it, color = Color(0xFFD0D0D0), fontSize = 15.sp, lineHeight = 21.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        Text(it, color = Color(0xFFD6D6D6), fontSize = 15.sp, lineHeight = 21.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
@@ -544,14 +541,13 @@ private fun FireHero(m: AppModel, v: Vod, count: Int, index: Int, onStep: (Int) 
                 }
             }
         }
-        // Petits points : quel film est affiché
         if (count > 1) Row(
-            Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 12.dp),
+            Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = 90.dp),
             horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             repeat(count) { i ->
                 val on = i == index
-                Box(Modifier.height(4.dp).width(if (on) 16.dp else 6.dp).background(if (on) C.Red else Color(0x66FFFFFF), RoundedCornerShape(2.dp)))
+                Box(Modifier.height(4.dp).width(if (on) 16.dp else 6.dp).background(if (on) Color.White else Color(0x55FFFFFF), RoundedCornerShape(2.dp)))
             }
         }
     }

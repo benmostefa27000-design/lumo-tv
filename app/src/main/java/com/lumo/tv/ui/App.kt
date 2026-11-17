@@ -1,5 +1,7 @@
 package com.lumo.tv.ui
 
+import androidx.compose.foundation.border
+
 import androidx.compose.ui.focus.focusRequester
 
 import androidx.compose.ui.focus.FocusRequester
@@ -118,9 +120,12 @@ fun LumoApp(m: AppModel) {
 @Composable
 fun MainScreen(m: AppModel) {
     if (m.isTv) {
-        Column(Modifier.fillMaxSize()) {
+        // TV : la barre du haut flotte par-dessus le contenu (l'accueil passe dessous, en plein écran)
+        Box(Modifier.fillMaxSize()) {
+            // Accueil, Films et Séries passent sous la barre (image en plein écran) ; les autres onglets commencent dessous
+            Box(Modifier.fillMaxSize().padding(top = if (m.tab == Tab.Home || m.tab == Tab.Movies || m.tab == Tab.Series) 0.dp else 66.dp)) { TabContent(m) }
+            Box(Modifier.fillMaxWidth().height(110.dp).background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xE6000000), Color(0x00000000)))))
             TvTopBar(m)
-            Box(Modifier.weight(1f)) { TabContent(m) }
         }
     } else if (isPhoneLandscape(false)) {
         // Téléphone à l'horizontale : onglets en haut (comme sur la TV), pas de barre en bas
@@ -256,35 +261,49 @@ private fun TabPage(m: AppModel, tab: Tab) {
 
 @Composable
 private fun TvTopBar(m: AppModel) {
+    val glass = Color(0x26FFFFFF)
+    val edge = Color(0x33FFFFFF)
     Row(
-        Modifier.fillMaxWidth().padding(start = 48.dp, end = 48.dp, top = 8.dp, bottom = 0.dp),
+        Modifier.fillMaxWidth().padding(start = 40.dp, end = 40.dp, top = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        LumoLogo(28)
-        Spacer(Modifier.width(18.dp))
+        LumoLogo(26)
+        // Onglets dans une « pilule » translucide ; l'onglet sélectionné par la télécommande affiche son nom
         val fr = rememberAutoFocus(true)
-        listOf(Tab.Home, Tab.Live, Tab.Movies, Tab.Series, Tab.MyList).forEach { t ->
-            var tf by remember { mutableStateOf(false) }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                // Seule l'icône s'allume (sans cadre blanc) ; le nom s'affiche dessous, sans encadrement
-                FocusBox(shape = RoundedCornerShape(12.dp), scale = 1.06f, border = false, requester = if (t == m.tab) fr else null, onClick = { m.tab = t }) { f ->
+        Row(
+            Modifier.background(glass, RoundedCornerShape(50)).border(0.5.dp, edge, RoundedCornerShape(50)).padding(horizontal = 6.dp, vertical = 5.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically
+        ) {
+            listOf(Tab.Home, Tab.Live, Tab.Movies, Tab.Series, Tab.MyList).forEach { t ->
+                FocusBox(shape = RoundedCornerShape(50), scale = 1.04f, border = false, requester = if (t == m.tab) fr else null, onClick = { m.tab = t }) { f ->
                     // Changement d'onglet juste en passant dessus avec les flèches (pas besoin de OK)
-                    LaunchedEffect(f) { tf = f; if (f && m.tab != t) { kotlinx.coroutines.delay(220); m.tab = t } }
-                    TabChip(t, selected = m.tab == t, focused = f, small = true)
-                }
-                Box(Modifier.height(18.dp), contentAlignment = Alignment.Center) {
-                    if (tf) Text(if (t == Tab.Live) "Direct" else t.label, color = Color.White, fontSize = 11.sp, lineHeight = 14.sp, maxLines = 1, softWrap = false, fontWeight = FontWeight.Medium)
-                    else if (m.tab == t) Box(Modifier.size(width = 12.dp, height = 2.dp).background(C.Red, RoundedCornerShape(1.dp)))
+                    LaunchedEffect(f) { if (f && m.tab != t) { kotlinx.coroutines.delay(220); m.tab = t } }
+                    val sel = m.tab == t
+                    val bg = when { f -> Color(0xF2FFFFFF); sel -> Color(0x26FFFFFF); else -> Color.Transparent }
+                    val fg = when { f -> Color(0xFF111111); sel -> Color.White; else -> Color(0xFFB8B8C0) }
+                    Row(
+                        Modifier.height(34.dp).background(bg, RoundedCornerShape(50)).padding(horizontal = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        androidx.compose.foundation.Canvas(Modifier.size(19.dp)) { drawTab(t, fg) }
+                        androidx.compose.animation.AnimatedVisibility(f || sel) {
+                            Text(if (t == Tab.Live) "Direct" else t.label, color = fg, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false)
+                        }
+                    }
                 }
             }
         }
         Spacer(Modifier.weight(1f))
         TvClock()
-        Spacer(Modifier.width(6.dp))
-        IconFocus(Icons.Default.Search, "Rechercher") { m.go(Screen.Search) }
-        IconFocus(Icons.Default.Settings, "Réglages") { m.tab = Tab.Settings }
-        ProfileBadge(m) { m.openProfiles() }
+        Row(
+            Modifier.background(glass, RoundedCornerShape(50)).border(0.5.dp, edge, RoundedCornerShape(50)).padding(horizontal = 4.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconFocus(Icons.Default.Search, "Rechercher") { m.go(Screen.Search) }
+            IconFocus(Icons.Default.Settings, "Réglages") { m.tab = Tab.Settings }
+            ProfileBadge(m) { m.openProfiles() }
+        }
     }
 }
 
@@ -299,7 +318,7 @@ private fun TvClock() {
             kotlinx.coroutines.delay(60_000L - System.currentTimeMillis() % 60_000L + 50)
         }
     }
-    Text(now, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Medium)
+    Text(now, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Medium)
 }
 
 @Composable

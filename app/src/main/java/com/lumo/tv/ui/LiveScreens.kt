@@ -1,5 +1,9 @@
 package com.lumo.tv.ui
 
+import androidx.compose.ui.graphics.Brush
+
+import androidx.compose.ui.focus.onFocusChanged
+
 import androidx.compose.ui.draw.clip
 
 import androidx.compose.foundation.clickable
@@ -99,7 +103,7 @@ fun LiveScreen(m: AppModel) {
             horizontalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
-            LazyColumn(Modifier.width(250.dp).fillMaxHeight().focusRequester(catFr).focusGroup(), verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+            LazyColumn(Modifier.width(220.dp).fillMaxHeight().focusRequester(catFr).focusGroup(), verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
                 item(key = "__sort") { Chip(sortLabel, false) { nextSort() } }
                 items(catItems, key = { it.first }) { (id, name) ->
                     FocusBox(modifier = Modifier.fillMaxWidth(), scale = 1.03f, onClick = { sel = id }) { f ->
@@ -113,8 +117,11 @@ fun LiveScreen(m: AppModel) {
                     }
                 }
             }
+            // Aperçu à droite (grand) : la chaîne sélectionnée, son programme et la suite
+            var focusedCh by remember(sel) { mutableStateOf<LiveStream?>(null) }
             @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
-            ChannelList(m, list, Modifier.weight(1f).focusRequester(chanFr).focusGroup())
+            ChannelList(m, list, Modifier.weight(1f).focusRequester(chanFr).focusGroup()) { focusedCh = it }
+            ChannelPreview(m, focusedCh ?: list.firstOrNull(), Modifier.weight(1.3f).fillMaxHeight())
         }
     } else {
         // Téléphone : les catégories en bas, près du pouce
@@ -133,20 +140,20 @@ fun LiveScreen(m: AppModel) {
 }
 
 @Composable
-private fun ChannelList(m: AppModel, list: List<LiveStream>, modifier: Modifier) {
+private fun ChannelList(m: AppModel, list: List<LiveStream>, modifier: Modifier, onFocus: ((LiveStream) -> Unit)? = null) {
     if (list.isEmpty()) { Box(modifier) { Empty("Rien ici pour l'instant. Ajoute des chaînes en favori avec l'étoile, ou en restant appuyé sur une chaîne.") }; return }
     LazyColumn(modifier.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
-        itemsIndexed(list, key = { _, s -> s.id }) { i, s -> ChannelRow(m, s, list, i) }
+        itemsIndexed(list, key = { _, s -> s.id }) { i, s -> ChannelRow(m, s, list, i, onFocus) }
     }
 }
 
 @Composable
-private fun ChannelRow(m: AppModel, s: LiveStream, list: List<LiveStream>, index: Int) {
+private fun ChannelRow(m: AppModel, s: LiveStream, list: List<LiveStream>, index: Int, onFocus: ((LiveStream) -> Unit)? = null) {
     LaunchedEffect(s.id) { delay(250); m.loadNow(s.id) }
     val fav = m.isFav("live", s.id)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         FocusBox(
-            modifier = Modifier.weight(1f), scale = 1.02f,
+            modifier = Modifier.weight(1f).onFocusChanged { if (it.hasFocus) onFocus?.invoke(s) }, scale = 1.02f,
             onLongClick = { m.toggleFav("live", s.id); m.showToast(if (fav) "Retirée des favoris" else "Ajoutée aux favoris ★") },
             onClick = { m.go(Screen.Player(Playable.Live(list, index))) }
         ) { f ->
@@ -306,4 +313,45 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCar(c: Color) {
     drawCircle(Color(0xFF151515), w * 0.11f, androidx.compose.ui.geometry.Offset(w * 0.73f, h * 0.70f))
     drawCircle(c, w * 0.075f, androidx.compose.ui.geometry.Offset(w * 0.27f, h * 0.70f))
     drawCircle(c, w * 0.075f, androidx.compose.ui.geometry.Offset(w * 0.73f, h * 0.70f))
+}
+
+
+/** TV : grand aperçu de la chaîne sélectionnée (logo, programme en cours avec avancement, description, programme suivant). */
+@Composable
+private fun ChannelPreview(m: AppModel, s: LiveStream?, modifier: Modifier) {
+    if (s == null) { Box(modifier); return }
+    var epg by remember(s.id) { mutableStateOf<List<EpgEntry>>(emptyList()) }
+    LaunchedEffect(s.id) {
+        delay(300)
+        epg = withContext(Dispatchers.IO) { try { m.client?.epgFor(s, full = false) ?: emptyList() } catch (_: Exception) { emptyList() } }
+    }
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { delay(30_000); now = System.currentTimeMillis() } }
+    val cur = epg.firstOrNull { it.start <= now && it.end > now }
+    val next = epg.firstOrNull { it.start >= (cur?.end ?: now) }
+    Column(modifier.padding(top = 8.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(14.dp))
+                .background(Brush.linearGradient(listOf(Color(0xFF1B2433), Color(0xFF0C0F16)))),
+            contentAlignment = Alignment.Center
+        ) {
+            if (s.icon.isNotBlank()) AsyncImage(model = s.icon, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize(0.45f))
+            else Text(s.name, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            Text("EN DIRECT", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp,
+                modifier = Modifier.align(Alignment.TopStart).padding(12.dp).background(C.Red, RoundedCornerShape(50)).padding(horizontal = 9.dp, vertical = 3.dp))
+        }
+        Text(s.name, color = C.Sub, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (cur != null) {
+            Text(cur.title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 26.sp)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("${hourFmt.format(java.util.Date(cur.start))} – ${hourFmt.format(java.util.Date(cur.end))}", color = C.Sub, fontSize = 14.sp)
+                val frac = ((now - cur.start).toFloat() / (cur.end - cur.start).coerceAtLeast(1)).coerceIn(0f, 1f)
+                Box(Modifier.weight(1f).height(4.dp).background(Color(0x33FFFFFF), RoundedCornerShape(2.dp))) {
+                    Box(Modifier.fillMaxHeight().fillMaxWidth(frac).background(C.Red, RoundedCornerShape(2.dp)))
+                }
+            }
+            if (cur.desc.isNotBlank()) Text(cur.desc, color = Color(0xFFCFCFCF), fontSize = 14.sp, lineHeight = 20.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
+        } else Text(m.nowPlaying[s.id] ?: "Programme non disponible", color = Color.White, fontSize = 18.sp, maxLines = 2)
+        if (next != null) Text("Ensuite · ${hourFmt.format(java.util.Date(next.start))}  ${next.title}", color = C.Sub, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
 }

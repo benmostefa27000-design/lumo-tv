@@ -1,5 +1,7 @@
 package com.lumo.tv.ui
 
+import androidx.compose.ui.focus.onFocusChanged
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -46,21 +48,67 @@ fun VodBrowser(m: AppModel, series: Boolean) {
     if (cats.isNotEmpty() && cats.none { it.id == sel }) sel = cats.first().id
     val cardW = if (m.isTv) 140.dp else 108.dp
 
+    // TV : en-tête « cinéma » qui suit l'affiche sélectionnée (nom, image, note)
+    var hdr by remember(kind) { mutableStateOf<Triple<String, String, String>?>(null) }
     val content: @Composable (Modifier) -> Unit = { mod ->
         if (series) {
             val list = remember(sel, m.series) { m.series.filter { it.catId == sel } }
+            LaunchedEffect(list) { if (m.isTv && hdr == null) list.firstOrNull()?.let { hdr = Triple(it.name, it.cover, it.rating) } }
             LazyVerticalGrid(GridCells.Adaptive(cardW), mod, contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(list, key = { it.id }) { s -> PosterCard(s.name, s.cover, cardW, kind = "tv") { m.go(Screen.SeriesDetail(s)) } }
+                items(list, key = { it.id }) { s ->
+                    Box(Modifier.onFocusChanged { if (it.hasFocus) hdr = Triple(s.name, s.cover, s.rating) }) {
+                        PosterCard(s.name, s.cover, cardW, kind = "tv") { m.go(Screen.SeriesDetail(s)) }
+                    }
+                }
             }
         } else {
             val list = remember(sel, m.vods) { m.dedupeFilms(m.vods.filter { it.catId == sel }.sortedByDescending { it.added }) }
+            LaunchedEffect(list) { if (m.isTv && hdr == null) list.firstOrNull()?.let { hdr = Triple(it.name, it.icon, it.rating) } }
             LazyVerticalGrid(GridCells.Adaptive(cardW), mod, contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(list, key = { it.id }) { v -> PosterCard(v.name, v.icon, cardW, kind = "movie") { m.go(Screen.MovieDetail(v)) } }
+                items(list, key = { it.id }) { v ->
+                    Box(Modifier.onFocusChanged { if (it.hasFocus) hdr = Triple(v.name, v.icon, v.rating) }) {
+                        PosterCard(v.name, v.icon, cardW, kind = "movie") { m.go(Screen.MovieDetail(v)) }
+                    }
+                }
             }
         }
     }
 
     if (m.isTv) {
+        // Nouveau visuel TV : image + titre de l'affiche sélectionnée en haut, catégories en pilules, affiches dessous
+        Box(Modifier.fillMaxSize()) {
+            val h = hdr
+            val sh = screenHeightDp()
+            Box(Modifier.fillMaxWidth().height(sh * 0.40f)) {
+                if (h != null) {
+                    androidx.compose.animation.Crossfade(targetState = h, animationSpec = androidx.compose.animation.core.tween(500), label = "vodHdr") { x ->
+                        val art = rememberTmdbArt(if (series) "tv" else "movie", x.first)
+                        val img = art?.backdrop?.ifBlank { null } ?: x.second
+                        if (img.isNotBlank()) AsyncImage(model = img, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                    }
+                }
+                Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.horizontalGradient(0f to Color(0xF2000000), 0.45f to Color(0xA6000000), 0.85f to Color.Transparent)))
+                Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(0.35f to Color.Transparent, 1f to C.Bg)))
+                if (h != null) Column(Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = 18.dp).fillMaxWidth(0.55f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CinemaTitle(h.first, 30.sp, maxLines = 1)
+                    MetaLine(
+                        listOfNotNull(
+                            com.lumo.tv.data.TmdbArt.split(h.first).second.ifBlank { null },
+                            if (series) "Série" else "Film",
+                            h.third.toDoubleOrNull()?.takeIf { it > 0 }?.let { "★ %.1f".format(it) }
+                        ),
+                        versionBadges(h.first)
+                    )
+                }
+            }
+            Column(Modifier.fillMaxSize().padding(top = sh * 0.40f)) {
+                LazyRow(contentPadding = PaddingValues(horizontal = 44.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(cats, key = { it.id }) { c -> Chip(c.name, sel == c.id) { sel = c.id; hdr = null } }
+                }
+                content(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 32.dp))
+            }
+        }
+    } else if (false) {
         Row(Modifier.fillMaxSize().padding(start = 40.dp, end = 28.dp, top = 8.dp)) {
             LazyColumn(Modifier.width(250.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
                 items(cats, key = { it.id }) { c ->
@@ -127,12 +175,17 @@ fun MovieDetailScreen(m: AppModel, v0: Vod) {
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             if (!m.isTv) Spacer(Modifier.height(if (isPhoneLandscape(m.isTv)) 24.dp else 140.dp))
-            Text(v.name, color = Color.White, fontSize = if (m.isTv) 48.sp else 32.sp, fontWeight = FontWeight.Black, lineHeight = if (m.isTv) 50.sp else 34.sp)
-            val meta = listOfNotNull(
-                (info?.rating?.ifBlank { null } ?: v.rating.ifBlank { null })?.toDoubleOrNull()?.takeIf { it > 0 }?.let { "★ %.1f".format(it) },
-                info?.year?.ifBlank { null }, info?.duration?.ifBlank { null }, info?.genre?.ifBlank { null }
-            ).joinToString(" · ")
-            if (meta.isNotBlank()) Text(meta, color = C.Sub, fontSize = 15.sp)
+            CinemaTitle(v.name, if (m.isTv) 42.sp else 28.sp)
+            MetaLine(
+                listOfNotNull(
+                    info?.year?.ifBlank { null } ?: com.lumo.tv.data.TmdbArt.split(v.name).second.ifBlank { null },
+                    prettyDuration(info?.duration),
+                    info?.genre?.ifBlank { null }?.split(",")?.take(2)?.joinToString(", ") { it.trim() },
+                    (info?.rating?.ifBlank { null } ?: v.rating.ifBlank { null })?.toDoubleOrNull()?.takeIf { it > 0 }?.let { "★ %.1f".format(it) }
+                ),
+                if (versions.size > 1) emptyList() else versionBadges(v.name),
+                fontSize = 15.sp
+            )
             if (prog != null && !prog.finished && prog.dur > 0) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Box(Modifier.width(200.dp).height(4.dp).background(Color(0x55FFFFFF))) { Box(Modifier.fillMaxHeight().fillMaxWidth(prog.fraction).background(C.Red)) }
@@ -194,14 +247,16 @@ fun SeriesDetailScreen(m: AppModel, s: Series) {
                 Box(Modifier.fillMaxSize().background(leftFade()))
                 Box(Modifier.fillMaxSize().background(bottomFade()))
                 Column(Modifier.align(Alignment.BottomStart).padding(horizontal = pad, vertical = 12.dp).widthIn(max = 700.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(s.name, color = Color.White, fontSize = if (m.isTv) 44.sp else 30.sp, fontWeight = FontWeight.Black)
-                    val meta = listOfNotNull(
-                        s.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { "★ %.1f".format(it) },
-                        i?.year?.ifBlank { null } ?: s.year.ifBlank { null },
-                        i?.seasons?.size?.takeIf { it > 0 }?.let { if (it > 1) "$it saisons" else "1 saison" },
-                        i?.genre?.ifBlank { null }
-                    ).joinToString(" · ")
-                    if (meta.isNotBlank()) Text(meta, color = C.Sub, fontSize = 14.sp)
+                    CinemaTitle(s.name, if (m.isTv) 40.sp else 26.sp)
+                    MetaLine(
+                        listOfNotNull(
+                            i?.year?.ifBlank { null } ?: s.year.ifBlank { null },
+                            i?.seasons?.size?.takeIf { it > 0 }?.let { if (it > 1) "$it saisons" else "1 saison" },
+                            i?.genre?.ifBlank { null }?.split(",")?.take(2)?.joinToString(", ") { it.trim() },
+                            s.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { "★ %.1f".format(it) }
+                        ),
+                        versionBadges(s.name)
+                    )
                     FlowRowCompat(spacing = 10.dp, center = false) {
                         val favFr = rememberAutoFocus(m.isTv)
                         if (i != null) {

@@ -120,17 +120,18 @@ fun LumoButton(
     requester: FocusRequester? = null,
     onClick: () -> Unit
 ) {
-    FocusBox(modifier = modifier.height(46.dp), shape = RoundedCornerShape(6.dp), scale = 1.04f, requester = requester, onClick = onClick) { _ ->
+    // Boutons en « pilule » (nouveau visuel)
+    FocusBox(modifier = modifier.height(46.dp), shape = RoundedCornerShape(50), scale = 1.05f, requester = requester, onClick = onClick) { _ ->
         Row(
             Modifier
                 .fillMaxHeight()
-                .background(if (primary) Color.White else Color(0xB36D6D6E))
-                .padding(horizontal = 20.dp),
+                .background(if (primary) Color.White else Color(0x40FFFFFF))
+                .padding(horizontal = 22.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (icon != null) icon()
-            Text(text, color = if (primary) Color.Black else Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(text, color = if (primary) Color.Black else Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         }
     }
 }
@@ -292,3 +293,52 @@ fun isPhoneLandscape(isTv: Boolean): Boolean =
 /** Hauteur de l'écran en dp. */
 @Composable
 fun screenHeightDp(): Dp = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
+
+
+// ---------------- Nouveau visuel « cinéma » ----------------
+
+/** Titre façon affiche de cinéma : majuscules fines et espacées. */
+@Composable
+fun CinemaTitle(raw: String, fontSize: androidx.compose.ui.unit.TextUnit, maxLines: Int = 2, center: Boolean = false) {
+    val clean = com.lumo.tv.data.TmdbArt.split(raw).first.ifBlank { raw }
+    Text(
+        clean.uppercase(), color = Color.White, fontSize = fontSize, fontWeight = FontWeight.Normal,
+        letterSpacing = (fontSize.value * 0.16f).sp, lineHeight = (fontSize.value * 1.15f).sp,
+        maxLines = maxLines, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        textAlign = if (center) androidx.compose.ui.text.style.TextAlign.Center else null
+    )
+}
+
+/** Langue / qualité lues dans le nom du fournisseur : « FR - X 4K » → [FR, 4K]. */
+fun versionBadges(name: String): List<String> {
+    val out = mutableListOf<String>()
+    Regex("""^\s*([A-Za-z]{2,4})\s*[-|:]""").find(name)?.groupValues?.get(1)?.uppercase()?.let { out.add(it) }
+    Regex("""(?i)\b(vostfr|multi|4k|uhd|fhd|hdr|hd|3d)\b""").findAll(name).forEach { val t = it.value.uppercase(); if (t !in out) out.add(t) }
+    return out
+}
+
+/** « 01:33:00 » ou « 93 » → « 1 h 33 ». */
+fun prettyDuration(d: String?): String? {
+    if (d.isNullOrBlank()) return null
+    val parts = d.split(":").mapNotNull { it.trim().toIntOrNull() }
+    val min = when {
+        parts.size >= 2 -> parts[0] * 60 + parts[1]
+        parts.size == 1 -> parts[0]
+        else -> return null
+    }
+    if (min <= 0) return null
+    return if (min >= 60) "${min / 60} h ${"%02d".format(min % 60)}" else "$min min"
+}
+
+/** Ligne d'infos : textes séparés par « · » et petits badges encadrés (HD, VF…). */
+@Composable
+fun MetaLine(texts: List<String>, badges: List<String> = emptyList(), fontSize: androidx.compose.ui.unit.TextUnit = 14.sp) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        texts.firstOrNull()?.let { Text(it, color = Color(0xFFD8D8D8), fontSize = fontSize) }
+        badges.forEach { b ->
+            Text(b, color = Color(0xFFE6E6E6), fontSize = (fontSize.value - 2).sp, fontWeight = FontWeight.Medium,
+                modifier = Modifier.border(0.8.dp, Color(0x99FFFFFF), RoundedCornerShape(4.dp)).padding(horizontal = 5.dp, vertical = 1.dp))
+        }
+        texts.drop(1).forEach { Text(it, color = Color(0xFFD8D8D8), fontSize = fontSize, maxLines = 1) }
+    }
+}
