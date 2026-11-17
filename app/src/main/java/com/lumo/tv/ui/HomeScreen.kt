@@ -418,7 +418,7 @@ private fun Hero(m: AppModel, v: Vod, onNoImage: () -> Unit = {}) {
     }
     val land = isPhoneLandscape(m.isTv)
     val sh = screenHeightDp()
-    val h = if (m.isTv) 400.dp else if (land) sh * 0.68f else 420.dp
+    val h = if (m.isTv) 400.dp else if (land) sh * 0.68f else sh * 0.66f
     val anim = m.store.anim3d
     val kb = if (anim) {
         val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "heroZoom")
@@ -449,18 +449,22 @@ private fun Hero(m: AppModel, v: Vod, onNoImage: () -> Unit = {}) {
             Modifier.align(Alignment.BottomStart).padding(start = LocalPad.current, end = LocalPad.current, bottom = 20.dp).widthIn(max = 620.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text("FILM", color = C.Sub, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
-            Text(v.name, color = Color.White, fontSize = if (m.isTv) 46.sp else 34.sp, fontWeight = FontWeight.Black, lineHeight = if (m.isTv) 48.sp else 36.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            val meta = listOfNotNull(
-                info?.year?.ifBlank { null },
-                info?.genre?.ifBlank { null },
-                info?.duration?.ifBlank { null },
-                v.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { "★ %.1f".format(it) }
-            ).joinToString(" · ")
-            if (meta.isNotBlank()) Text(meta, color = C.Sub, fontSize = 14.sp)
-            info?.plot?.takeIf { it.isNotBlank() }?.let {
-                Text(it, color = Color.White, fontSize = 15.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            // Nouveau visuel : titre fin et espacé, infos avec badges
+            CinemaTitle(v.name, if (m.isTv) 40.sp else 30.sp)
+            MetaLine(
+                listOfNotNull(
+                    info?.year?.ifBlank { null } ?: com.lumo.tv.data.TmdbArt.split(v.name).second.ifBlank { null },
+                    prettyDuration(info?.duration),
+                    info?.genre?.ifBlank { null }?.split(",")?.firstOrNull()?.trim(),
+                    v.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { "★ %.1f".format(it) }
+                ),
+                versionBadges(v.name), fontSize = 13.sp
+            )
+            var plot by remember(v.id) { mutableStateOf("") }
+            LaunchedEffect(info, infoDone) {
+                plot = info?.plot?.trim().orEmpty().ifBlank { if (infoDone) withContext(Dispatchers.IO) { com.lumo.tv.data.TmdbArt.overview("movie", v.name) } else "" }
             }
+            if (plot.isNotBlank()) Text(plot, color = Color(0xFFDADADA), fontSize = 14.sp, lineHeight = 20.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 LumoButton("Lecture", icon = { Icon(Icons.Default.PlayArrow, null, tint = Color.Black) }) {
                     m.go(Screen.Player(com.lumo.tv.Playable.Movie(v)))

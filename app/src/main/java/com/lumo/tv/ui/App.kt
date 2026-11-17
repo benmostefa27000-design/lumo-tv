@@ -1,5 +1,7 @@
 package com.lumo.tv.ui
 
+import androidx.compose.foundation.clickable
+
 import androidx.compose.foundation.border
 
 import androidx.compose.ui.focus.focusRequester
@@ -135,8 +137,15 @@ fun MainScreen(m: AppModel) {
         }
     } else {
         Column(Modifier.fillMaxSize()) {
-            PhoneTopBar(m)
-            Box(Modifier.weight(1f)) { TabContent(m) }
+            // Accueil : l'image du film passe sous la barre du haut (plein écran) ; ailleurs, la barre est au-dessus
+            if (m.tab == Tab.Home) Box(Modifier.weight(1f)) {
+                TabContent(m)
+                Box(Modifier.fillMaxWidth().height(96.dp).background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xCC000000), Color(0x00000000)))))
+                PhoneTopBar(m)
+            } else {
+                PhoneTopBar(m)
+                Box(Modifier.weight(1f)) { TabContent(m) }
+            }
             PhoneBottomBar(m)
         }
     }
@@ -350,9 +359,16 @@ private fun PhoneTopBar(m: AppModel) {
     ) {
         LumoLogo(28)
         Spacer(Modifier.weight(1f))
-        IconFocus(Icons.Default.Search, "Rechercher") { m.go(Screen.Search) }
-        ProfileBadge(m) { m.openProfiles() }
-        Spacer(Modifier.width(8.dp))
+        // Recherche + profil dans une pilule translucide (nouveau visuel)
+        Row(
+            Modifier.background(Color(0x26FFFFFF), RoundedCornerShape(50)).border(0.5.dp, Color(0x33FFFFFF), RoundedCornerShape(50)).padding(horizontal = 2.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconFocus(Icons.Default.Search, "Rechercher") { m.go(Screen.Search) }
+            ProfileBadge(m) { m.openProfiles() }
+            Spacer(Modifier.width(4.dp))
+        }
+        Spacer(Modifier.width(10.dp))
     }
 }
 
@@ -365,21 +381,24 @@ private fun PhoneBottomBar(m: AppModel) {
         Triple(Tab.Series, Icons.Default.List, "Séries"),
         Triple(Tab.Settings, Icons.Default.Settings, "Réglages")
     )
-    NavigationBar(containerColor = Color(0xFF0A0A0A), tonalElevation = 0.dp) {
-        items.forEach { (t, icon, label) ->
-            NavigationBarItem(
-                selected = m.tab == t,
-                onClick = { m.tab = t },
-                icon = { Icon(icon, contentDescription = label) },
-                label = { Text(label, fontSize = 11.sp) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = Color.White,
-                    selectedTextColor = Color.White,
-                    unselectedIconColor = C.Dim,
-                    unselectedTextColor = C.Dim,
-                    indicatorColor = Color(0xFF2A2A2A)
-                )
-            )
+    // Nouveau visuel : barre du bas en « pilule » translucide
+    Box(Modifier.fillMaxWidth().background(Color.Black).padding(horizontal = 14.dp, vertical = 8.dp)) {
+        Row(
+            Modifier.fillMaxWidth().height(64.dp).background(Color(0xFF16171C), RoundedCornerShape(50))
+                .border(0.5.dp, Color(0x33FFFFFF), RoundedCornerShape(50)).padding(horizontal = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            items.forEach { (t, icon, label) ->
+                val sel = m.tab == t
+                Column(
+                    Modifier.weight(1f).fillMaxHeight().padding(vertical = 6.dp).clip(RoundedCornerShape(50))
+                        .background(if (sel) Color(0x26FFFFFF) else Color.Transparent).clickable { m.tab = t },
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(icon, contentDescription = label, tint = if (sel) Color.White else C.Dim, modifier = Modifier.size(22.dp))
+                    Text(label, fontSize = 10.sp, color = if (sel) Color.White else C.Dim, maxLines = 1)
+                }
+            }
         }
     }
 }
