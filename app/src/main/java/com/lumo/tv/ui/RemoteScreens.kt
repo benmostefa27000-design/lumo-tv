@@ -94,6 +94,21 @@ fun RemoteScreen(m: AppModel, tvId: String, name: String) {
             RemoteKey("Volume +") { act("volup") }
         }
         RemoteKey("Arrêter la vidéo") { act("stop") }
+        // Dicter une recherche avec le micro du téléphone : le résultat s'affiche sur la TV
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        val dict = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { res ->
+            res.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { t ->
+                scope.launch { m.sendCommand(tvId, JSONObject().put("type", "search").put("q", t)); m.showToast("Recherche « $t » envoyée à la TV") }
+            }
+        }
+        RemoteKey("🎤 Dicter une recherche", big = true) {
+            try {
+                dict.launch(android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                    .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "fr-FR")
+                    .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Film, série ou chaîne à chercher sur la TV"))
+            } catch (_: Exception) { m.showToast("Micro indisponible") }
+        }
         Spacer(Modifier.weight(1f))
         LumoButton("Fermer", primary = false) { m.back() }
     }

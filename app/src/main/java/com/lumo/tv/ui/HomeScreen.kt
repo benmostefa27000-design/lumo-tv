@@ -2,6 +2,8 @@
 
 package com.lumo.tv.ui
 
+import androidx.compose.foundation.gestures.animateScrollBy
+
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 
 import androidx.compose.ui.input.pointer.pointerInput
@@ -151,15 +153,30 @@ fun HomeScreen(m: AppModel) {
     val heroFocusNow = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
     val spec = remember { centeredSpec { heroFocusNow.get() } }
     androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides (if (m.isTv) spec else MinimalBringIntoView)) {
-    LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 32.dp)) {
+    val focusMgr = androidx.compose.ui.platform.LocalFocusManager.current
+    LazyColumn(
+        Modifier.fillMaxSize().then(if (!m.isTv) Modifier else Modifier.onPreviewKeyEvent { e ->
+            // TV : ▼ toujours possible. Si la télécommande ne trouve rien en dessous (rangée pas encore affichée),
+            // on fait défiler la page puis on réessaie.
+            if (e.type != androidx.compose.ui.input.key.KeyEventType.KeyDown || e.key != androidx.compose.ui.input.key.Key.DirectionDown) return@onPreviewKeyEvent false
+            heroFocusNow.set(false)
+            if (!focusMgr.moveFocus(androidx.compose.ui.focus.FocusDirection.Down)) {
+                listScope.launch {
+                    listState.animateScrollBy(420f)
+                    kotlinx.coroutines.delay(60)
+                    focusMgr.moveFocus(androidx.compose.ui.focus.FocusDirection.Down)
+                }
+            }
+            true
+        }),
+        state = listState, contentPadding = PaddingValues(bottom = 32.dp)
+    ) {
         // Haut de l'accueil classique : grande affiche du film en fondu enchaîné (retour à la version d'avant l'effet iPad)
         // TV : bandeau façon Fire TV (image à droite, texte et boutons à gauche)
         if (hero != null && m.isTv) item(key = "firehero") {
             Box(Modifier.onFocusChanged { heroFocused = it.hasFocus; heroFocusNow.set(it.hasFocus); if (it.hasFocus) listScope.launch { listState.animateScrollToItem(0) } }) {
                 FireHero(m, hero, heroOk.size, heroIdx % heroOk.size.coerceAtLeast(1),
                     onStep = { d -> heroIdx = ((heroIdx + d) % heroOk.size + heroOk.size) % heroOk.size },
-                    // ▼ depuis Lecture / Plus d'infos : on fait défiler vers la rangée suivante (la sélection suit)
-                    onDown = { heroFocusNow.set(false); listScope.launch { listState.animateScrollToItem(1) } },
                     onNoImage = { if (hero.id !in badHero) badHero.add(hero.id) })
             }
         }

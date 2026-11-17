@@ -349,20 +349,30 @@ class AppModel(private val context: Context) {
         loadError = null
         scope.launch {
             try {
-                withContext(Dispatchers.IO) {
-                    val lc = c.liveCategories(force)
-                    val vc = c.vodCategories(force)
-                    val sc = c.seriesCategories(force)
+                // 1) Démarrage instantané : catalogue déjà enregistré (même s'il a plus de 6 h), chaînes d'abord
+                // 2) Puis mise à jour en arrière-plan si besoin, sans bloquer l'écran
+                suspend fun pass(f: Boolean) = withContext(Dispatchers.IO) {
+                    val lc = c.liveCategories(f)
+                    val vc = c.vodCategories(f)
+                    val sc = c.seriesCategories(f)
                     withContext(Dispatchers.Main) { liveCats = sortCats(lc); vodCats = sortCats(vc); seriesCats = sortCats(sc) }
-                    val v = c.vods(force)
+                    val l = c.liveStreams(f)
+                    withContext(Dispatchers.Main) { live = l }
+                    val v = c.vods(f)
                     withContext(Dispatchers.Main) { vods = v }
                     prepareVersions(v)
-                    val s = c.series(force)
+                    val s = c.series(f)
                     withContext(Dispatchers.Main) { series = s }
-                    val l = c.liveStreams(force)
-                    withContext(Dispatchers.Main) { live = l }
                 }
+                c.staleSeen = false
+                c.preferCache = !force
+                try { pass(force) } finally { c.preferCache = false }
+                loading = false
                 warmSearch()
+                if (c.staleSeen) {
+                    c.staleSeen = false
+                    try { pass(false); warmSearch() } catch (_: Exception) { }
+                }
             } catch (e: OutOfMemoryError) {
                 loadError = "Catalogue trop lourd pour cet appareil. Supprime des catégories depuis le téléphone (Réglages › Gérer les catégories)."
             } catch (e: Exception) {
@@ -850,6 +860,8 @@ class AppModel(private val context: Context) {
                     }
                 }
             }
+            // Recherche dictée sur le téléphone (micro de la télécommande Lumo) → affichée sur la TV
+            "search" -> c.optString("q").takeIf { it.isNotBlank() }?.let { openSearch(query = it) }
             "remote" -> {
                 when (val a = c.optString("action")) {
                     "volup" -> volume(android.media.AudioManager.ADJUST_RAISE)
@@ -859,6 +871,20 @@ class AppModel(private val context: Context) {
                     else -> remoteEvents.tryEmit(a)
                 }
             }
+        }
+    }
+
+    // ---------- Recherche vocale ----------
+    /** Ouvrir la recherche en lançant tout de suite le micro (bouton micro / touche Recherche de la télécommande). */
+    var searchVoice by mutableStateOf(false)
+    /** Texte à chercher en arrivant sur la recherche (dicté sur le téléphone, ou demandé à l'Assistant Google). */
+    var searchPrefill by mutableStateOf<String?>(null)
+    fun openSearch(voice: Boolean = false, query: String? = null) {
+        searchVoice = voice && query == null
+        searchPrefill = query
+        if (current !is Screen.Search) {
+            if (stack.isEmpty() || current == Screen.Login || current == Screen.Profiles) return
+            go(Screen.Search)
         }
     }
 

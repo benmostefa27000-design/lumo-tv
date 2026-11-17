@@ -37,7 +37,7 @@ import java.util.*
 
 @Composable
 fun SearchScreen(m: AppModel) {
-    var q by remember { mutableStateOf("") }
+    var q by remember { mutableStateOf(m.searchPrefill ?: "") }
     val fr = remember { FocusRequester() }
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
@@ -59,6 +59,15 @@ fun SearchScreen(m: AppModel) {
     val canSpeak = remember { ctx.packageManager.queryIntentActivities(speechIntent, 0).isNotEmpty() }
     val voice = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { res ->
         res.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { q = it }
+    }
+    // Micro lancé tout de suite (touche Recherche/micro), ou texte reçu du téléphone / de l'Assistant
+    LaunchedEffect(m.searchVoice, m.searchPrefill) {
+        m.searchPrefill?.let { q = it; m.searchPrefill = null }
+        if (m.searchVoice) {
+            m.searchVoice = false
+            if (canSpeak) { kotlinx.coroutines.delay(250); try { voice.launch(speechIntent) } catch (_: Exception) { } }
+            else m.showToast("Micro indisponible sur cet appareil : dicte depuis la télécommande Lumo de ton téléphone")
+        }
     }
     var res by remember { mutableStateOf(AppModel.SearchResults()) }
     var searching by remember { mutableStateOf(false) }
@@ -88,11 +97,11 @@ fun SearchScreen(m: AppModel) {
                 ),
                 modifier = Modifier.padding(horizontal = pad).fillMaxWidth().focusRequester(fr)
             )
-            if (canSpeak) {
-                Row(Modifier.padding(horizontal = pad, vertical = 8.dp)) {
-                    LumoButton("Recherche vocale", primary = false) {
-                        try { voice.launch(speechIntent) } catch (_: Exception) { m.showToast("Recherche vocale indisponible") }
-                    }
+            Row(Modifier.padding(horizontal = pad, vertical = 8.dp)) {
+                val micFr = rememberAutoFocus(m.isTv && canSpeak)
+                LumoButton("🎤  Recherche vocale", primary = m.isTv, requester = micFr) {
+                    if (canSpeak) { try { voice.launch(speechIntent) } catch (_: Exception) { m.showToast("Recherche vocale indisponible") } }
+                    else m.showToast("Micro indisponible sur cette TV : ouvre la télécommande Lumo sur ton téléphone et touche « Dicter une recherche »")
                 }
             }
         }

@@ -36,10 +36,18 @@ class XtreamClient(val acc: Account, private val http: OkHttpClient, private val
     }
 
     /** Télécharge une liste dans un fichier (sans tout garder en mémoire) et le réutilise quelques heures. */
+    /** Démarrage instantané : on lit d'abord le catalogue déjà enregistré, même ancien (mis à jour juste après). */
+    @Volatile var preferCache = false
+    @Volatile var staleSeen = false
+
     private fun cachedFile(name: String, url: String, maxAgeMs: Long, force: Boolean): File {
         val dir = File(cacheDir, "xtream").apply { mkdirs() }
         val f = File(dir, "${acc.key()}_$name.json")
-        if (!force && f.exists() && f.length() > 0 && System.currentTimeMillis() - f.lastModified() < maxAgeMs) return f
+        if (!force && f.exists() && f.length() > 0) {
+            val fresh = System.currentTimeMillis() - f.lastModified() < maxAgeMs
+            if (fresh) return f
+            if (preferCache) { staleSeen = true; return f }
+        }
         try {
             val tmp = File(dir, "${acc.key()}_$name.tmp")
             val req = Request.Builder().url(url).header("User-Agent", USER_AGENT).build()

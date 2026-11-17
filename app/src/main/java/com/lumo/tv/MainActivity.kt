@@ -68,7 +68,22 @@ class MainActivity : ComponentActivity() {
     }
 
     /** QR code de la TV scanné avec le téléphone : lumo://pair?code=XXXXXX, ou rappel touché. */
+    // Touche Recherche / micro de certaines télécommandes → recherche vocale
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        if (keyCode == android.view.KeyEvent.KEYCODE_SEARCH) { model.openSearch(voice = true); return true }
+        return super.onKeyDown(keyCode, event)
+    }
+
     private fun handleIntent(i: Intent?) {
+        // « Cherche … dans Lumo » (Assistant Google / recherche Android)
+        if (i?.action == Intent.ACTION_SEARCH || i?.action == "android.media.action.MEDIA_PLAY_FROM_SEARCH") {
+            val q = i.getStringExtra(android.app.SearchManager.QUERY)?.trim().orEmpty()
+            lifecycleScope.launch {
+                repeat(40) { if (model.vods.isEmpty() && model.live.isEmpty()) kotlinx.coroutines.delay(500) }
+                if (q.isNotBlank()) model.openSearch(query = q) else model.openSearch(voice = true)
+            }
+            return
+        }
         if (i?.action == "com.lumo.tv.PLAY_LIVE") {
             val id = i.getStringExtra("stream") ?: return
             lifecycleScope.launch {

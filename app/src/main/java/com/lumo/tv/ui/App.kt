@@ -310,6 +310,10 @@ private fun TvTopBar(m: AppModel) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconFocus(Icons.Default.Search, "Rechercher") { m.go(Screen.Search) }
+            // Micro : recherche vocale directe
+            FocusBox(shape = RoundedCornerShape(50), scale = 1.1f, onClick = { m.openSearch(voice = true) }) { _ ->
+                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) { Text("🎤", fontSize = 18.sp) }
+            }
             IconFocus(Icons.Default.Settings, "Réglages") { m.tab = Tab.Settings }
             ProfileBadge(m) { m.openProfiles() }
         }

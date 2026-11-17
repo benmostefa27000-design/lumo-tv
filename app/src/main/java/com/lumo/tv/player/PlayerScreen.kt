@@ -620,6 +620,37 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     }
 
     fun poke() { showUi = true; uiTick++ }
+    // Chaîne précédente (touche 0, ou icône) et saisie d'un numéro de chaîne avec les chiffres
+    var curLive by remember { mutableStateOf<Playable.Live?>(null) }
+    var lastLive by remember { mutableStateOf<Playable.Live?>(null) }
+    LaunchedEffect(item) {
+        val it = item as? Playable.Live ?: return@LaunchedEffect
+        val cur = curLive
+        if (cur != null && cur.list[cur.index].id != it.list[it.index].id) lastLive = cur
+        curLive = it
+    }
+    fun previousChannel(): Boolean {
+        val l = lastLive ?: return false
+        item = l
+        poke()
+        return true
+    }
+    var digits by remember { mutableStateOf("") }
+    LaunchedEffect(digits) {
+        if (digits.isEmpty()) return@LaunchedEffect
+        delay(1600)
+        val n = digits.toIntOrNull()
+        digits = ""
+        val it = item as? Playable.Live ?: return@LaunchedEffect
+        if (n == null) return@LaunchedEffect
+        val inList = it.list.indexOfFirst { s -> s.num == n }
+        if (inList >= 0) { item = it.copy(index = inList); return@LaunchedEffect }
+        val s = m.live.firstOrNull { s -> s.num == n }
+        if (s == null) { m.showToast("Pas de chaîne n° $n"); return@LaunchedEffect }
+        val l = m.live.filter { x -> x.catId == s.catId }
+        item = Playable.Live(l, l.indexOf(s).coerceAtLeast(0))
+    }
+
     fun zap(dir: Int): Boolean {
         val it = item
         if (it !is Playable.Live || it.list.size < 2) return false
@@ -681,6 +712,15 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> { if (live) { if (!zap(-1)) poke() } else seekBy(-10_000); true }
             KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { if (live) { if (!zap(1)) poke() } else seekBy(30_000); true }
             KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_SETTINGS, KeyEvent.KEYCODE_INFO -> { tvMenu = true; true }
+            KeyEvent.KEYCODE_LAST_CHANNEL -> { if (live) previousChannel(); true }
+            in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> {
+                if (!live) false else {
+                    val d = e.nativeKeyEvent.keyCode - KeyEvent.KEYCODE_0
+                    // « 0 » tout seul = chaîne précédente ; sinon on compose le numéro (1, 2 ou 3 chiffres)
+                    if (d == 0 && digits.isEmpty()) previousChannel() else if (digits.length < 3) digits += d
+                    true
+                }
+            }
             else -> false
         }
     }
@@ -788,6 +828,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (canStartOver) IconPill("Reprendre au début", onClick = { startOver() }) { drawRestart() }
+                if (lastLive != null) IconPill("Chaîne précédente", onClick = { previousChannel() }) { drawArrow(-1) }
                 IconPill("Image : " + modeNames[videoMode], active = videoMode != 0, onClick = { nextVideoMode() }) { drawAspect() }
                 IconPill("Synchro du son", active = avDelay != 0, onClick = { panel = !panel }) { drawSync() }
                 if ((item as Playable.Live).list.size > 1) IconPill("Chaînes", active = chanList, onClick = { chanList = !chanList }) { drawChannels() }
@@ -1069,6 +1110,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     if (ep.index < ep.episodes.lastIndex) entry("Épisode suiv.", onClick = { epStep(1); tvMenu = false }) { drawArrow(1) }
                 }
                 if (canStartOver) entry("Au début", onClick = { startOver() }) { drawRestart() }
+                if (live != null && lastLive != null) entry("Chaîne préc.", onClick = { tvMenu = false; previousChannel() }) { drawArrow(-1) }
                 entry("Langue audio", onClick = { pickAudio = true; tvMenu = false; subsPanel = true }) { drawAudioLang() }
                 if (live == null) entry("Sous-titres", onClick = { pickAudio = false; tvMenu = false; subsPanel = true }) { drawSubtitles() }
                 entry(modeNames[videoMode], active = videoMode != 0, onClick = { nextVideoMode() }) { drawAspect() }
@@ -1104,6 +1146,10 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 Text("Mémorisé pour cette chaîne, ce film ou cette série.", color = C.Dim, fontSize = 12.sp)
             }
         }
+
+        // Numéro de chaîne en cours de saisie
+        if (digits.isNotEmpty()) Text(digits, color = Color.White, fontSize = 56.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.align(Alignment.TopEnd).padding(32.dp).background(Color(0xCC000000), RoundedCornerShape(12.dp)).padding(horizontal = 20.dp, vertical = 6.dp))
 
         // Épisode suivant : compte à rebours en haut à droite
         if (nextIn > 0 && !m.pip) {
