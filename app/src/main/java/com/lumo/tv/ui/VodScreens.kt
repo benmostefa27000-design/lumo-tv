@@ -178,7 +178,7 @@ fun MovieDetailScreen(m: AppModel, v0: Vod) {
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             if (!m.isTv) Spacer(Modifier.height(if (isPhoneLandscape(m.isTv)) 24.dp else 140.dp))
-            CinemaTitle(v.name, if (m.isTv) 42.sp else 28.sp)
+            TitleArt(v.name, "movie", if (m.isTv) 42.sp else 28.sp, if (m.isTv) 120.dp else 90.dp)
             MetaLine(
                 listOfNotNull(
                     info?.year?.ifBlank { null } ?: com.lumo.tv.data.TmdbArt.split(v.name).second.ifBlank { null },
@@ -250,7 +250,7 @@ fun SeriesDetailScreen(m: AppModel, s: Series) {
                 Box(Modifier.fillMaxSize().background(leftFade()))
                 Box(Modifier.fillMaxSize().background(bottomFade()))
                 Column(Modifier.align(Alignment.BottomStart).padding(horizontal = pad, vertical = 12.dp).widthIn(max = 700.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    CinemaTitle(s.name, if (m.isTv) 40.sp else 26.sp)
+                    TitleArt(s.name, "tv", if (m.isTv) 40.sp else 26.sp, if (m.isTv) 110.dp else 84.dp)
                     MetaLine(
                         listOfNotNull(
                             i?.year?.ifBlank { null } ?: s.year.ifBlank { null },

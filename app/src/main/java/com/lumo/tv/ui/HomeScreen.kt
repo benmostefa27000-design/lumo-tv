@@ -96,7 +96,8 @@ fun HomeScreen(m: AppModel) {
     // Seulement ce qui existe dans la source en cours (une reprise d'une autre source ne marcherait pas ici)
     val progress = m.progressList().filter { !it.finished }
         .filter { p -> if (m.vods.isEmpty()) true else if (p.kind == "ep") p.parentId in seriesById else p.itemId in vodsById }
-        .distinctBy { if (it.kind == "ep" && it.parentId.isNotBlank()) "s" + it.parentId else "v" + it.title.lowercase().filter { c -> c.isLetterOrDigit() } }
+        // Une seule fois par film même s'il a été regardé dans plusieurs langues/versions
+        .distinctBy { (if (it.kind == "ep") "s" else "v") + m.filmKey(it.title).substringBefore("|").ifBlank { it.parentId + it.itemId } }
         .take(30)
     val favVod = run { m.store.version; m.store.favs(m.pid, "vod") }
     val favSer = run { m.store.version; m.store.favs(m.pid, "series") }
@@ -128,6 +129,20 @@ fun HomeScreen(m: AppModel) {
         kotlinx.coroutines.delay(150)
         progAsk = null
         progFr.getOrNull(i.coerceAtMost(progFr.lastIndex))?.let { try { it.requestFocus() } catch (_: Exception) { } }
+    }
+    // Top 10 : films tendance de la semaine sur TMDB, retrouvés dans ton catalogue (version française en priorité)
+    val tmdbKey = com.lumo.tv.data.TmdbArt.key
+    val top10 by produceState(initialValue = emptyList<Vod>(), vods, tmdbKey) {
+        if (tmdbKey.isBlank() || vods.isEmpty()) return@produceState
+        val trending = withContext(Dispatchers.IO) { com.lumo.tv.data.TmdbArt.trendingTitles() }
+        value = withContext(Dispatchers.Default) {
+            val idx = HashMap<String, Vod>()
+            vods.sortedBy { if (it.name.trim().startsWith("FR", true)) 0 else 1 }.forEach { v ->
+                val b = m.filmKey(v.name).substringBefore("|")
+                if (b.isNotBlank() && b !in idx) idx[b] = v
+            }
+            trending.mapNotNull { (t, o) -> idx[m.filmKey(t).substringBefore("|")] ?: idx[m.filmKey(o).substringBefore("|")] }.distinctBy { it.id }.take(10)
+        }
     }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val listScope = rememberCoroutineScope()
@@ -216,6 +231,24 @@ fun HomeScreen(m: AppModel) {
         if (recentVods.isNotEmpty() && !anim) item {
             RowSection("Films ajoutés récemment") {
                 items(recentVods, key = { "rv" + it.id }) { v -> PosterCard(v.name, v.icon, cardW, kind = "movie") { m.go(Screen.MovieDetail(v)) } }
+            }
+        }
+        // Top 10 de la semaine (TMDB) parmi les films de ton abonnement, avec grands numéros
+        if (top10.size >= 3) item(key = "top10") {
+            RowSection("Top 10 de la semaine") {
+                items(top10.size, key = { "t" + top10[it].id }) { i ->
+                    val v = top10[i]
+                    Box(Modifier.width(cardW * 1.5f), contentAlignment = Alignment.BottomStart) {
+                        Text(
+                            "${i + 1}", fontSize = if (m.isTv) 120.sp else 96.sp, fontWeight = FontWeight.Black, color = Color(0xFF2A2A2E),
+                            style = androidx.compose.ui.text.TextStyle(drawStyle = androidx.compose.ui.graphics.drawscope.Stroke(width = 5f)),
+                            lineHeight = if (m.isTv) 110.sp else 90.sp, modifier = Modifier.offset(x = (-4).dp, y = 14.dp)
+                        )
+                        Box(Modifier.align(Alignment.BottomEnd)) {
+                            PosterCard(v.name, v.icon, cardW, kind = "movie") { m.go(Screen.MovieDetail(v)) }
+                        }
+                    }
+                }
             }
         }
         if (recentSeries.isNotEmpty()) item(key = "rser") { FlowOrRow(m, "Séries mises à jour", "rs", recentSeries.take(25), cardW) }
@@ -443,14 +476,15 @@ private fun Hero(m: AppModel, v: Vod, onNoImage: () -> Unit = {}) {
             onError = { if (ci + 1 < imgs.size) ci++ else allFailed = true },
             modifier = Modifier.fillMaxSize().graphicsLayer { scaleX = kb; scaleY = kb }
         )
-        Box(Modifier.fillMaxSize().background(leftFade()))
-        Box(Modifier.fillMaxSize().background(bottomFade()))
+        // Téléphone en portrait : l'image reste bien visible (seulement un dégradé en bas pour le texte)
+        if (land || m.isTv) Box(Modifier.fillMaxSize().background(leftFade()))
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.35f to Color.Transparent, 0.75f to C.Bg.copy(alpha = 0.75f), 1f to C.Bg)))
         Column(
             Modifier.align(Alignment.BottomStart).padding(start = LocalPad.current, end = LocalPad.current, bottom = 20.dp).widthIn(max = 620.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             // Nouveau visuel : titre fin et espacé, infos avec badges
-            CinemaTitle(v.name, if (m.isTv) 40.sp else 30.sp)
+            TitleArt(v.name, "movie", if (m.isTv) 40.sp else 30.sp, if (m.isTv) 110.dp else 86.dp)
             MetaLine(
                 listOfNotNull(
                     info?.year?.ifBlank { null } ?: com.lumo.tv.data.TmdbArt.split(v.name).second.ifBlank { null },
@@ -515,7 +549,7 @@ private fun FireHero(m: AppModel, v: Vod, count: Int, index: Int, onStep: (Int) 
                 androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(500)) togetherWith androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(250))
             }) { f ->
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    CinemaTitle(f.name, 40.sp)
+                    TitleArt(f.name, "movie", 40.sp, 110.dp)
                     val inf = infos[f.id]
                     MetaLine(
                         listOfNotNull(

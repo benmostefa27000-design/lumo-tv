@@ -297,6 +297,23 @@ fun screenHeightDp(): Dp = androidx.compose.ui.platform.LocalConfiguration.curre
 
 // ---------------- Nouveau visuel « cinéma » ----------------
 
+/** Logo du titre TMDB s'il existe (comme sur Netflix), sinon le titre en majuscules espacées. */
+@Composable
+fun TitleArt(raw: String, kind: String, fontSize: androidx.compose.ui.unit.TextUnit, logoHeight: androidx.compose.ui.unit.Dp, maxLines: Int = 2) {
+    val key = com.lumo.tv.data.TmdbArt.key
+    val logo by produceState(initialValue = "", kind, raw, key) {
+        value = if (key.isBlank()) "" else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.lumo.tv.data.TmdbArt.logo(kind, raw) }
+    }
+    var failed by remember(raw) { mutableStateOf(false) }
+    if (logo.isNotBlank() && !failed) {
+        coil.compose.AsyncImage(
+            model = logo, contentDescription = raw, contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+            alignment = Alignment.CenterStart, onError = { failed = true },
+            modifier = Modifier.height(logoHeight).fillMaxWidth()
+        )
+    } else CinemaTitle(raw, fontSize, maxLines)
+}
+
 /** Titre façon affiche de cinéma : majuscules fines et espacées. */
 @Composable
 fun CinemaTitle(raw: String, fontSize: androidx.compose.ui.unit.TextUnit, maxLines: Int = 2, center: Boolean = false) {

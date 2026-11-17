@@ -116,6 +116,57 @@ object TmdbArt {
         return fr.firstOrNull()?.takeIf { year.isNotBlank() }
     }
 
+    // ---------- Logos de titre (comme sur Netflix) et Top 10 ----------
+
+    private val logoMem = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /** Logo du titre (PNG transparent) en français, sinon anglais, sinon sans langue. « » si aucun. */
+    suspend fun logo(kind: String, raw: String): String {
+        val apiKey = key
+        val client = http ?: return ""
+        if (apiKey.isBlank() || raw.isBlank()) return ""
+        val k = "logo|$kind|$raw"
+        logoMem[k]?.let { return it }
+        prefs?.getString(k, null)?.let { v ->
+            val parts = v.split("|")
+            val age = System.currentTimeMillis() - (parts.getOrNull(1)?.toLongOrNull() ?: 0)
+            if (parts[0].isNotBlank() || age < 7L * 86_400_000) { logoMem[k] = parts[0]; return parts[0] }
+        }
+        return limiter.withPermit {
+            val (name, year) = split(raw)
+            val url = try {
+                val best = findBest(client, apiKey, kind, name, year)
+                val id = best?.optInt("id") ?: 0
+                if (id <= 0) "" else {
+                    val req = okhttp3.Request.Builder().url("https://api.themoviedb.org/3/$kind/$id/images?api_key=$apiKey&include_image_language=fr,en,null").build()
+                    val arr = client.newCall(req).execute().use { r -> if (r.isSuccessful) r.body?.string()?.let { org.json.JSONObject(it).optJSONArray("logos") } else null }
+                    val logos = (0 until (arr?.length() ?: 0)).map { arr!!.getJSONObject(it) }
+                    val pick = logos.firstOrNull { it.optString("iso_639_1") == "fr" } ?: logos.firstOrNull { it.optString("iso_639_1") == "en" } ?: logos.firstOrNull()
+                    pick?.optString("file_path")?.takeIf { it.startsWith("/") }?.let { "https://image.tmdb.org/t/p/w500$it" } ?: ""
+                }
+            } catch (_: Exception) { return@withPermit "" }
+            logoMem[k] = url
+            prefs?.edit()?.putString(k, "$url|${System.currentTimeMillis()}")?.apply()
+            url
+        }
+    }
+
+    /** Films les plus vus de la semaine (titres français et originaux) pour la rangée « Top 10 ». */
+    suspend fun trendingTitles(): List<Pair<String, String>> {
+        val apiKey = key
+        val client = http ?: return emptyList()
+        if (apiKey.isBlank()) return emptyList()
+        return try {
+            val out = mutableListOf<Pair<String, String>>()
+            for (page in 1..2) {
+                val req = okhttp3.Request.Builder().url("https://api.themoviedb.org/3/trending/movie/week?api_key=$apiKey&language=fr-FR&page=$page").build()
+                val arr = client.newCall(req).execute().use { r -> if (r.isSuccessful) r.body?.string()?.let { org.json.JSONObject(it).optJSONArray("results") } else null } ?: break
+                for (i in 0 until arr.length()) { val o = arr.getJSONObject(i); out.add(o.optString("title") to o.optString("original_title")) }
+            }
+            out
+        } catch (_: Exception) { emptyList() }
+    }
+
     /** « FR - Malfaisante (2026) » → (« Malfaisante », « 2026 ») */
     fun split(raw: String): Pair<String, String> {
         val year = Regex("""\((\d{4})\)""").find(raw)?.groupValues?.get(1)

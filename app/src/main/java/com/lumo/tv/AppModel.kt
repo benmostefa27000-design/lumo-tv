@@ -554,8 +554,8 @@ class AppModel(private val context: Context) {
     }
 
     fun progressList(): List<Progress> { store.version; return store.progress(pid) }
-    private fun normTitle(t: String) = java.text.Normalizer.normalize(t.lowercase(), java.text.Normalizer.Form.NFD)
-        .replace(Regex("\\p{Mn}+"), "").replace(Regex("[^a-z0-9]"), "")
+    // Même film quelle que soit la version (FR, VOSTFR, AR, 4K…) : titre nettoyé, sans langue ni qualité
+    private fun normTitle(t: String) = filmKey(t).substringBefore("|").ifBlank { t.lowercase() }
 
     /** Même film présent deux fois chez le fournisseur (ids différents) : on prend la reprise la plus récente. */
     fun progressFor(key: String): Progress? {
