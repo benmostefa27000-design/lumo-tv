@@ -79,21 +79,6 @@ fun LiveScreen(m: AppModel) {
     // On revient sur la dernière catégorie ouverte (au retour d'une chaîne)
     var sel by remember { mutableStateOf(m.lastCat["live"]?.takeIf { id -> id == FAV || id == AUTO || id == REPLAY || cats.any { it.id == id } } ?: if (favs.isNotEmpty()) FAV else (cats.firstOrNull()?.id ?: ALL)) }
     LaunchedEffect(sel) { m.lastCat["live"] = sel }
-    // « Guide TV » : ouvre la grille (favoris, sinon la catégorie en cours) puis revient sur la catégorie d'avant
-    var prevSel by remember { mutableStateOf(sel) }
-    LaunchedEffect(sel) {
-        if (sel == GUIDE) {
-            val base = when (prevSel) {
-                FAV, GUIDE -> m.live.filter { it.id in favs }
-                AUTO -> m.live.filter { it.id in m.store.favs(m.pid, "auto") }
-                ALL, REPLAY -> m.live.filter { it.catId in visibleIds }
-                else -> m.live.filter { it.catId == prevSel }
-            }.ifEmpty { m.live.filter { it.catId == cats.firstOrNull()?.id } }
-            val title = catItems.firstOrNull { it.first == prevSel }?.second ?: "Guide TV"
-            sel = prevSel
-            m.go(Screen.TvGuide(m.sortLive(base, m.liveSort).take(80), title))
-        } else prevSel = sel
-    }
     val visibleIds = remember(cats) { cats.map { it.id }.toSet() }
     val sortMode = m.liveSort
     // Dans « Favoris », une chaîne retirée reste affichée (étoile grise) jusqu'à ce qu'on change de catégorie :
@@ -117,6 +102,21 @@ fun LiveScreen(m: AppModel) {
     val hasReplay = remember(m.live, visibleIds) { m.live.any { it.archive && it.catId in visibleIds } }
     // Téléphone : liste « Voiture » (chaînes légères pour Fermata Auto)
     val catItems = listOf(GUIDE to "📅 Guide TV", FAV to "★ Favoris") + (if (!m.isTv) listOf(AUTO to "🚗 Voiture") else emptyList()) + (if (hasReplay) listOf(REPLAY to "⟲ Rattrapage") else emptyList()) + cats.map { it.id to it.name }
+    // « Guide TV » : ouvre la grille (favoris, sinon la catégorie en cours) puis revient sur la catégorie d'avant
+    var prevSel by remember { mutableStateOf(sel) }
+    LaunchedEffect(sel) {
+        if (sel == GUIDE) {
+            val base = when (prevSel) {
+                FAV, GUIDE -> m.live.filter { it.id in favs }
+                AUTO -> m.live.filter { it.id in m.store.favs(m.pid, "auto") }
+                ALL, REPLAY -> m.live.filter { it.catId in visibleIds }
+                else -> m.live.filter { it.catId == prevSel }
+            }.ifEmpty { m.live.filter { it.catId == cats.firstOrNull()?.id } }
+            val title = catItems.firstOrNull { it.first == prevSel }?.second ?: "Guide TV"
+            sel = prevSel
+            m.go(Screen.TvGuide(m.sortLive(base, m.liveSort).take(80), title))
+        } else prevSel = sel
+    }
 
     if (m.isTv) {
         // En descendant depuis les onglets, on arrive d'abord sur les chaînes (les catégories sont à gauche)
