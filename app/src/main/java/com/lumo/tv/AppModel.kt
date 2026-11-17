@@ -472,6 +472,53 @@ class AppModel(private val context: Context) {
         return r
     }
 
+    // ---------- Versions d'un même film (VF, VOSTFR, 4K…) regroupées ----------
+
+    private val versionTag = Regex("""(?i)\b(vostfr|vost|vff|vfq|vfi|vf|multi|truefrench|french|subfrench|4k|uhd|fhd|hd|sd|hdr|hdr10|dv|3d|imax|hevc|x265|1080p|720p|2160p)\b""")
+
+    /** Clé d'un film : titre nettoyé + année (« FR - Malfaisante (2026) » et « VOSTFR - Malfaisante 4K (2026) » → même clé). */
+    fun filmKey(name: String): String {
+        val (n, y) = com.lumo.tv.data.TmdbArt.split(name)
+        val base = java.text.Normalizer.normalize(n.replace(versionTag, " ").lowercase(), java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{Mn}+"), "").replace(Regex("[^\\p{L}\\p{N}]+"), "")
+        return "$base|$y"
+    }
+
+    private var versionsCache: Pair<List<Vod>, Map<String, List<Vod>>>? = null
+    private fun versionsMap(): Map<String, List<Vod>> {
+        val c = versionsCache
+        if (c != null && c.first === vods) return c.second
+        val map = vods.groupBy { filmKey(it.name) }
+        versionsCache = vods to map
+        return map
+    }
+
+    /** Toutes les versions disponibles d'un film (lui compris). */
+    fun versionsOf(v: Vod): List<Vod> = versionsMap()[filmKey(v.name)]?.takeIf { it.size > 1 } ?: listOf(v)
+
+    /** Une seule affiche par film dans les listes. */
+    fun dedupeFilms(list: List<Vod>): List<Vod> = list.distinctBy { filmKey(it.name) }
+
+    /** Nom court d'une version : « FR · 4K », « VOSTFR », « EN »… (catégorie si rien ne les distingue). */
+    fun versionLabel(v: Vod, all: List<Vod>): String {
+        val lang = Regex("""^\s*([A-Za-z]{2,4})\s*[-|:]""").find(v.name)?.groupValues?.get(1)?.uppercase()
+        val tags = versionTag.findAll(v.name).map { it.value.uppercase() }.filter { it != lang }.distinct().toList()
+        var label = (listOfNotNull(lang) + tags).joinToString(" · ").ifBlank { "Version" }
+        val same = all.count { o -> o !== v && (Regex("""^\s*([A-Za-z]{2,4})\s*[-|:]""").find(o.name)?.groupValues?.get(1)?.uppercase().let { l ->
+            (listOfNotNull(l) + versionTag.findAll(o.name).map { it.value.uppercase() }.filter { it != l }.distinct()).joinToString(" · ").ifBlank { "Version" } } == label) }
+        if (same > 0) vodCats.firstOrNull { it.id == v.catId }?.name?.let { label += " · " + it.substringAfter("|").trim() }
+        return label
+    }
+
+    /** Qualité automatique : versions plus légères de la même chaîne (la plus proche d'abord, ex. 4K → FHD → HD → SD). */
+    fun lighterVariants(s: LiveStream): List<LiveStream> {
+        val b = baseName(s.name)
+        if (b.isBlank()) return emptyList()
+        val r = qualityRank(s.name)
+        return live.filter { it.id != s.id && baseName(it.name) == b && qualityRank(it.name) < r }
+            .sortedWith(compareByDescending<LiveStream> { qualityRank(it.name) }.thenBy { if (it.catId == s.catId) 0 else 1 })
+    }
+
     /** Ajoute à « Voiture » la version la plus légère de chaque chaîne favorite. Renvoie le nombre ajouté. */
     fun fillAutoFromFavs(): Int {
         val favIds = store.favs(pid, "live")

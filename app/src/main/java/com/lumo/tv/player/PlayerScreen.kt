@@ -54,6 +54,8 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import com.lumo.tv.AppModel
 import com.lumo.tv.Playable
+import com.lumo.tv.Screen
+import com.lumo.tv.data.LiveStream
 import com.lumo.tv.data.EpgEntry
 import com.lumo.tv.data.Progress
 import com.lumo.tv.data.USER_AGENT
@@ -241,7 +243,15 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     LaunchedEffect(tvMenu, subsPanel, chanList) {
         if (m.isTv && !tvMenu && !subsPanel && !chanList) { delay(120); try { rootFr.requestFocus() } catch (_: Exception) { } }
     }
+    // Qualité automatique (direct) : si ça coupe, on passe sur une version plus légère de la même chaîne
+    var down by remember { mutableStateOf<Pair<Playable, LiveStream>?>(null) }
+    val stalls = remember { mutableListOf<Long>() }
+    var stallStart by remember { mutableLongStateOf(0L) }
+    var readyOnce by remember { mutableStateOf(false) }
     var autoNextAt by remember { mutableLongStateOf(0L) }
+    // Épisode suivant : compte à rebours (OK = lancer tout de suite, Retour = annuler)
+    var nextIn by remember { mutableIntStateOf(0) }
+    val nextFr = remember { androidx.compose.ui.focus.FocusRequester() }
     var tracksTick by remember { mutableIntStateOf(0) }
     var brightShown by remember { mutableFloatStateOf(-1f) }
     var brightHideAt by remember { mutableLongStateOf(0L) }
@@ -276,7 +286,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
 
     fun resolve(p: Playable): Resolved = when (p) {
         is Playable.Live -> {
-            val s = p.list[p.index]
+            val s = down?.takeIf { it.first == p }?.second ?: p.list[p.index]
             Resolved(client.liveUrl(s.id, if (useHls) "m3u8" else "ts"), s.name, "En direct", null, true)
         }
         is Playable.Movie -> Resolved(client.vodUrl(p.vod.id, p.vod.ext), p.vod.name, "", "vod_${p.vod.id}", false)
@@ -384,6 +394,20 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     }
     LaunchedEffect(panel) { if (panel) { delay(150); try { panelFr.requestFocus() } catch (_: Exception) { } } }
 
+    fun playNextEp() {
+        val it = item as? Playable.Ep ?: return
+        nextIn = 0
+        if (it.index + 1 < it.episodes.size) {
+            item = it.copy(index = it.index + 1, fromStart = true)
+            autoNextAt = System.currentTimeMillis()
+        }
+    }
+    LaunchedEffect(nextIn > 0) {
+        if (nextIn <= 0) return@LaunchedEffect
+        if (m.isTv) { delay(150); try { nextFr.requestFocus() } catch (_: Exception) { } }
+        while (nextIn > 0) { delay(1000); if (nextIn > 0) { nextIn--; if (nextIn == 0) playNextEp() } }
+    }
+    androidx.activity.compose.BackHandler(enabled = nextIn > 0) { nextIn = 0 }
     androidx.activity.compose.BackHandler(enabled = panel) { panel = false }
     androidx.activity.compose.BackHandler(enabled = chanList) { chanList = false }
     androidx.activity.compose.BackHandler(enabled = subsPanel) { subsPanel = false }
@@ -402,8 +426,31 @@ fun PlayerScreen(m: AppModel, start: Playable) {
         if (m.isTv && !panel && errorMsg == null) { delay(120); try { rootFr.requestFocus() } catch (_: Exception) { } }
     }
 
+    /** Passe sur la version plus légère suivante de la chaîne en cours. Faux s'il n'y en a pas. */
+    fun stepDown(): Boolean {
+        val it = item as? Playable.Live ?: return false
+        val cur = down?.takeIf { d -> d.first == it }?.second ?: it.list[it.index]
+        val next = m.lighterVariants(cur).firstOrNull() ?: return false
+        stalls.clear(); stallStart = 0L
+        down = it to next
+        m.showToast("Connexion faible : passage sur ${next.name}")
+        return true
+    }
+    // Surveillance des coupures : une coupure de plus de 7 s, ou 3 coupures en 90 s → qualité inférieure
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1000)
+            if (item !is Playable.Live || errorMsg != null) continue
+            val now = System.currentTimeMillis()
+            stalls.removeAll { now - it > 90_000 }
+            val longStall = player.playbackState == Player.STATE_BUFFERING && stallStart > 0 && now - stallStart > 7000
+            if (longStall || stalls.size >= 3) stepDown()
+        }
+    }
+
     var loadedOnce by remember { mutableStateOf(false) }
-    LaunchedEffect(item, useHls) {
+    LaunchedEffect(item, useHls, down) {
+        readyOnce = false; stallStart = 0L; stalls.clear()
         val fromStart = when (val it = item) { is Playable.Movie -> it.fromStart; is Playable.Ep -> it.fromStart; else -> false }
         if (loadedOnce) {
             // Changement de chaîne : on ferme d'abord l'ancien flux, sinon le fournisseur voit 2 écrans (code 458).
@@ -478,15 +525,14 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             }
 
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_READY) { retries = 0; busyRetry = 0; busyCountdown = 0; busySince = 0L }
+                if (state == Player.STATE_READY) { retries = 0; busyRetry = 0; busyCountdown = 0; busySince = 0L; readyOnce = true; stallStart = 0L }
+                if (state == Player.STATE_BUFFERING && readyOnce && item is Playable.Live) {
+                    val now = System.currentTimeMillis(); stallStart = now; stalls.add(now)
+                }
                 if (state == Player.STATE_ENDED) {
                     saveProgress(finished = true)
                     val it = item
-                    if (it is Playable.Ep && it.index + 1 < it.episodes.size) {
-                        item = it.copy(index = it.index + 1, fromStart = true)
-                        m.showToast("Épisode suivant")
-                        autoNextAt = System.currentTimeMillis()
-                    }
+                    if (it is Playable.Ep && it.index + 1 < it.episodes.size) nextIn = 8
                 }
             }
 
@@ -520,6 +566,8 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     if (!isLive && pos > 0) player.seekTo(pos)
                     player.play()
                 } else {
+                    // Direct : avant d'abandonner, on essaie une version plus légère de la chaîne
+                    if (isLive && stepDown()) { retries = 0; return }
                     errorMsg = "Lecture impossible : ${error.errorCodeName}"
                 }
             }
@@ -556,6 +604,16 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     val next = epgNow.firstOrNull { it.start >= (cur?.end ?: now) }
     val hhmm = remember { SimpleDateFormat("HH:mm", Locale.FRANCE) }
     val uiVisible = if (m.isTv) showUi else controlsVisible
+    // Reprendre le programme en cours depuis le début (chaînes avec rattrapage chez le fournisseur)
+    val canStartOver = liveStream?.archive == true && cur != null
+    fun startOver() {
+        val st = liveStream ?: return
+        val c = cur ?: return
+        tvMenu = false
+        player.stop()
+        m.closeMediaConnections()
+        m.go(Screen.Player(Playable.Replay(st, c)))
+    }
 
     fun poke() { showUi = true; uiTick++ }
     fun zap(dir: Int): Boolean {
@@ -599,7 +657,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
         poke()
     }
     fun tvKey(e: androidx.compose.ui.input.key.KeyEvent): Boolean {
-        if (!m.isTv || panel || tvMenu || subsPanel || chanList || errorMsg != null) return false
+        if (!m.isTv || panel || tvMenu || subsPanel || chanList || errorMsg != null || nextIn > 0) return false
         if (e.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return false
         val live = item is Playable.Live
         return when (e.nativeKeyEvent.keyCode) {
@@ -725,6 +783,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                 Modifier.align(Alignment.BottomEnd).padding(end = 18.dp, bottom = 18.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                if (canStartOver) IconPill("Reprendre au début", onClick = { startOver() }) { drawRestart() }
                 IconPill("Image : " + modeNames[videoMode], active = videoMode != 0, onClick = { nextVideoMode() }) { drawAspect() }
                 IconPill("Synchro du son", active = avDelay != 0, onClick = { panel = !panel }) { drawSync() }
                 if ((item as Playable.Live).list.size > 1) IconPill("Chaînes", active = chanList, onClick = { chanList = !chanList }) { drawChannels() }
@@ -1005,6 +1064,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     if (ep.index > 0) entry("Épisode préc.", onClick = { epStep(-1); tvMenu = false }) { drawArrow(-1) }
                     if (ep.index < ep.episodes.lastIndex) entry("Épisode suiv.", onClick = { epStep(1); tvMenu = false }) { drawArrow(1) }
                 }
+                if (canStartOver) entry("Au début", onClick = { startOver() }) { drawRestart() }
                 entry("Langue audio", onClick = { pickAudio = true; tvMenu = false; subsPanel = true }) { drawAudioLang() }
                 if (live == null) entry("Sous-titres", onClick = { pickAudio = false; tvMenu = false; subsPanel = true }) { drawSubtitles() }
                 entry(modeNames[videoMode], active = videoMode != 0, onClick = { nextVideoMode() }) { drawAspect() }
@@ -1038,6 +1098,23 @@ fun PlayerScreen(m: AppModel, start: Playable) {
                     LumoButton("Fermer", primary = false) { panel = false }
                 }
                 Text("Mémorisé pour cette chaîne, ce film ou cette série.", color = C.Dim, fontSize = 12.sp)
+            }
+        }
+
+        // Épisode suivant : compte à rebours en haut à droite
+        if (nextIn > 0 && !m.pip) {
+            val nx = (item as? Playable.Ep)?.let { it.episodes.getOrNull(it.index + 1) }
+            Column(
+                Modifier.align(Alignment.TopEnd).padding(24.dp).background(Color(0xEE141418), RoundedCornerShape(14.dp)).padding(18.dp).widthIn(max = 340.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text("Épisode suivant dans $nextIn s", color = C.Sub, fontSize = 14.sp)
+                if (nx != null) Text("S${nx.season} É${nx.num}" + com.lumo.tv.data.cleanEpisodeTitle(nx.title, (item as Playable.Ep).series.name).let { t -> if (t.isNotBlank()) " · $t" else "" },
+                    color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    LumoButton("Lancer", requester = nextFr) { playNextEp() }
+                    LumoButton("Annuler", primary = false) { nextIn = 0 }
+                }
             }
         }
 
@@ -1143,6 +1220,22 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSubtitles() {
     drawLine(Color.White, androidx.compose.ui.geometry.Offset(w * 0.22f, h * 0.62f), androidx.compose.ui.geometry.Offset(w * 0.6f, h * 0.62f), strokeWidth = sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
 }
 
+
+/** Reprendre au début : flèche circulaire vers l'arrière avec une barre verticale (début). */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRestart() {
+    val w = size.width; val h = size.height
+    val sw = w * 0.09f
+    drawArc(Color.White, startAngle = 200f, sweepAngle = 280f, useCenter = false,
+        topLeft = androidx.compose.ui.geometry.Offset(w * 0.2f, h * 0.2f), size = androidx.compose.ui.geometry.Size(w * 0.6f, h * 0.6f),
+        style = androidx.compose.ui.graphics.drawscope.Stroke(sw, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+    val tip = androidx.compose.ui.graphics.Path().apply {
+        moveTo(w * 0.12f, h * 0.30f); lineTo(w * 0.30f, h * 0.24f); lineTo(w * 0.24f, h * 0.44f); close()
+    }
+    drawPath(tip, Color.White)
+    drawLine(Color.White, androidx.compose.ui.geometry.Offset(w * 0.44f, h * 0.38f), androidx.compose.ui.geometry.Offset(w * 0.44f, h * 0.62f), strokeWidth = sw * 0.8f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+    val tri = androidx.compose.ui.graphics.Path().apply { moveTo(w * 0.62f, h * 0.38f); lineTo(w * 0.48f, h * 0.50f); lineTo(w * 0.62f, h * 0.62f); close() }
+    drawPath(tri, Color.White)
+}
 
 /** Langue audio : bulle de dialogue avec une onde sonore. */
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawAudioLang() {

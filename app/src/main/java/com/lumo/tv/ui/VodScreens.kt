@@ -53,7 +53,7 @@ fun VodBrowser(m: AppModel, series: Boolean) {
                 items(list, key = { it.id }) { s -> PosterCard(s.name, s.cover, cardW, kind = "tv") { m.go(Screen.SeriesDetail(s)) } }
             }
         } else {
-            val list = remember(sel, m.vods) { m.vods.filter { it.catId == sel }.sortedByDescending { it.added } }
+            val list = remember(sel, m.vods) { m.dedupeFilms(m.vods.filter { it.catId == sel }.sortedByDescending { it.added }) }
             LazyVerticalGrid(GridCells.Adaptive(cardW), mod, contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(list, key = { it.id }) { v -> PosterCard(v.name, v.icon, cardW, kind = "movie") { m.go(Screen.MovieDetail(v)) } }
             }
@@ -107,7 +107,10 @@ fun MyListScreen(m: AppModel) {
 // ---------------- Fiche film ----------------
 
 @Composable
-fun MovieDetailScreen(m: AppModel, v: Vod) {
+fun MovieDetailScreen(m: AppModel, v0: Vod) {
+    // Plusieurs versions du même film (VF, VOSTFR, 4K…) : on choisit avant de lancer
+    val versions = remember(v0.id, m.vods) { m.versionsOf(v0) }
+    var v by remember(v0.id) { mutableStateOf(v0) }
     var info by remember(v.id) { mutableStateOf<VodInfo?>(null) }
     LaunchedEffect(v.id) { info = withContext(Dispatchers.IO) { try { m.client?.vodInfo(v.id) } catch (_: Exception) { null } } }
     val prog = m.progressFor("vod_${v.id}")
@@ -134,6 +137,12 @@ fun MovieDetailScreen(m: AppModel, v: Vod) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Box(Modifier.width(200.dp).height(4.dp).background(Color(0x55FFFFFF))) { Box(Modifier.fillMaxHeight().fillMaxWidth(prog.fraction).background(C.Red)) }
                     Text("reste ${((prog.dur - prog.pos) / 60000).coerceAtLeast(1)} min", color = C.Sub, fontSize = 14.sp)
+                }
+            }
+            if (versions.size > 1) {
+                Text("Versions", color = C.Sub, fontSize = 13.sp)
+                FlowRowCompat(spacing = 8.dp, center = false) {
+                    versions.forEach { o -> Chip(m.versionLabel(o, versions), v.id == o.id) { v = o } }
                 }
             }
             FlowRowCompat(spacing = 10.dp, center = false) {
@@ -249,6 +258,11 @@ fun SeriesDetailScreen(m: AppModel, s: Series) {
                                 if (p != null) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp).background(Color(0x55FFFFFF))) {
                                     Box(Modifier.fillMaxHeight().fillMaxWidth(if (p.finished) 1f else p.fraction).background(C.Red))
                                 }
+                                // Épisode déjà vu : coche en haut à droite
+                                if (p?.finished == true) Box(
+                                    Modifier.align(Alignment.TopEnd).padding(4.dp).size(22.dp).background(Color(0xDD000000), RoundedCornerShape(50)),
+                                    contentAlignment = Alignment.Center
+                                ) { Text("✓", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
                             }
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text("${e.num}. ${com.lumo.tv.data.cleanEpisodeTitle(e.title, s.name).ifBlank { "Épisode ${e.num}" }}", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
