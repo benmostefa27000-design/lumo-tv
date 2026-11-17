@@ -260,7 +260,7 @@ fun SeriesDetailScreen(m: AppModel, s: Series) {
                                 }
                                 // Épisode déjà vu : coche en haut à droite
                                 if (p?.finished == true) Box(
-                                    Modifier.align(Alignment.TopEnd).padding(4.dp).size(22.dp).background(Color(0xDD000000), RoundedCornerShape(50)),
+                                    Modifier.align(Alignment.TopEnd).padding(4.dp).size(22.dp).background(Color(0xDD000000), androidx.compose.foundation.shape.RoundedCornerShape(50)),
                                     contentAlignment = Alignment.Center
                                 ) { Text("✓", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
                             }
