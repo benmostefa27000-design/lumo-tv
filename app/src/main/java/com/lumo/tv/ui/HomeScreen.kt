@@ -84,9 +84,9 @@ fun HomeScreen(m: AppModel) {
         m.vodCats.filter { fr.containsMatchIn(it.name) }.map { it.id }.toSet()
     }
     val frenchRecent = remember(vods, frCats) {
-        vods.filter { it.catId in frCats || it.name.trim().startsWith("FR", ignoreCase = true) }.sortedByDescending { it.added }.let { m.dedupeFilms(it) }.take(60)
+        vods.filter { it.catId in frCats || it.name.trim().startsWith("FR", ignoreCase = true) }.sortedByDescending { it.added }.take(200).let { m.dedupeFilms(it) }.take(60)
     }
-    val recentVods = remember(vods, frenchRecent) { frenchRecent.ifEmpty { vods.sortedByDescending { it.added }.let { m.dedupeFilms(it) }.take(60) } }
+    val recentVods = remember(vods, frenchRecent) { frenchRecent.ifEmpty { vods.sortedByDescending { it.added }.take(200).let { m.dedupeFilms(it) }.take(60) } }
     val recentSeries = remember(series) { series.sortedByDescending { it.modified }.take(40) }
     val vodsById = remember(m.vods) { m.vods.associateBy { it.id } }
     val seriesById = remember(m.series) { m.series.associateBy { it.id } }

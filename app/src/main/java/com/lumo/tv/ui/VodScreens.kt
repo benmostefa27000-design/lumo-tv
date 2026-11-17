@@ -62,7 +62,10 @@ fun VodBrowser(m: AppModel, series: Boolean) {
                 }
             }
         } else {
-            val list = remember(sel, m.vods) { m.dedupeFilms(m.vods.filter { it.catId == sel }.sortedByDescending { it.added }) }
+            // Calcul en arrière-plan (grosses catégories) : l'écran ne se fige pas
+            val list by produceState(initialValue = emptyList<Vod>(), sel, m.vods) {
+                value = withContext(Dispatchers.Default) { m.dedupeFilms(m.vods.filter { it.catId == sel }.sortedByDescending { it.added }) }
+            }
             LaunchedEffect(list) { if (m.isTv && hdr == null) list.firstOrNull()?.let { hdr = Triple(it.name, it.icon, it.rating) } }
             LazyVerticalGrid(GridCells.Adaptive(cardW), mod, contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(list, key = { it.id }) { v ->
@@ -157,7 +160,7 @@ fun MyListScreen(m: AppModel) {
 @Composable
 fun MovieDetailScreen(m: AppModel, v0: Vod) {
     // Plusieurs versions du même film (VF, VOSTFR, 4K…) : on choisit avant de lancer
-    val versions = remember(v0.id, m.vods) { m.versionsOf(v0) }
+    val versions = m.versionsOf(v0)
     var v by remember(v0.id) { mutableStateOf(v0) }
     var info by remember(v.id) { mutableStateOf<VodInfo?>(null) }
     LaunchedEffect(v.id) { info = withContext(Dispatchers.IO) { try { m.client?.vodInfo(v.id) } catch (_: Exception) { null } } }

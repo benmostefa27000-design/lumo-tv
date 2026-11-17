@@ -356,6 +356,7 @@ class AppModel(private val context: Context) {
                     withContext(Dispatchers.Main) { liveCats = sortCats(lc); vodCats = sortCats(vc); seriesCats = sortCats(sc) }
                     val v = c.vods(force)
                     withContext(Dispatchers.Main) { vods = v }
+                    prepareVersions(v)
                     val s = c.series(force)
                     withContext(Dispatchers.Main) { series = s }
                     val l = c.liveStreams(force)
@@ -477,24 +478,25 @@ class AppModel(private val context: Context) {
     private val versionTag = Regex("""(?i)\b(vostfr|vost|vff|vfq|vfi|vf|multi|truefrench|french|subfrench|4k|uhd|fhd|hd|sd|hdr|hdr10|dv|3d|imax|hevc|x265|1080p|720p|2160p)\b""")
 
     /** Clé d'un film : titre nettoyé + année (« FR - Malfaisante (2026) » et « VOSTFR - Malfaisante 4K (2026) » → même clé). */
-    fun filmKey(name: String): String {
+    private val filmKeys = java.util.concurrent.ConcurrentHashMap<String, String>()
+    fun filmKey(name: String): String = filmKeys.getOrPut(name) {
         val (n, y) = com.lumo.tv.data.TmdbArt.split(name)
         val base = java.text.Normalizer.normalize(n.replace(versionTag, " ").lowercase(), java.text.Normalizer.Form.NFD)
             .replace(Regex("\\p{Mn}+"), "").replace(Regex("[^\\p{L}\\p{N}]+"), "")
-        return "$base|$y"
+        "$base|$y"
     }
 
-    private var versionsCache: Pair<List<Vod>, Map<String, List<Vod>>>? = null
-    private fun versionsMap(): Map<String, List<Vod>> {
-        val c = versionsCache
-        if (c != null && c.first === vods) return c.second
-        val map = vods.groupBy { filmKey(it.name) }
-        versionsCache = vods to map
-        return map
+    // Calculé en arrière-plan une fois le catalogue chargé (des milliers de films : jamais sur l'écran)
+    private var versionsMapState by mutableStateOf<Map<String, List<Vod>>>(emptyMap())
+    private fun prepareVersions(list: List<Vod>) {
+        scope.launch(Dispatchers.Default) {
+            val map = try { list.groupBy { filmKey(it.name) }.filterValues { it.size > 1 } } catch (_: Exception) { emptyMap() }
+            withContext(Dispatchers.Main) { versionsMapState = map }
+        }
     }
 
     /** Toutes les versions disponibles d'un film (lui compris). */
-    fun versionsOf(v: Vod): List<Vod> = versionsMap()[filmKey(v.name)]?.takeIf { it.size > 1 } ?: listOf(v)
+    fun versionsOf(v: Vod): List<Vod> = versionsMapState[filmKey(v.name)] ?: listOf(v)
 
     /** Une seule affiche par film dans les listes. */
     fun dedupeFilms(list: List<Vod>): List<Vod> = list.distinctBy { filmKey(it.name) }
