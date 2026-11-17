@@ -168,7 +168,8 @@ fun MyListScreen(m: AppModel) {
 @Composable
 fun MovieDetailScreen(m: AppModel, v0: Vod) {
     // Plusieurs versions du même film (VF, VOSTFR, 4K…) : on choisit avant de lancer
-    val versions = m.versionsOf(v0)
+    // Versions trouvées en une fraction de seconde (sans attendre le calcul de tout le catalogue)
+    val versions by produceState(initialValue = m.versionsOf(v0), v0.id) { value = m.findVersions(v0) }
     var v by remember(v0.id) { mutableStateOf(v0) }
     var info by remember(v.id) { mutableStateOf<VodInfo?>(null) }
     LaunchedEffect(v.id) { info = withContext(Dispatchers.IO) { try { m.client?.vodInfo(v.id) } catch (_: Exception) { null } } }

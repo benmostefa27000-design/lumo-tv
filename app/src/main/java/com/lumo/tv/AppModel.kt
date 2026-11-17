@@ -505,6 +505,18 @@ class AppModel(private val context: Context) {
     /** Toutes les versions disponibles d'un film (lui compris). */
     fun versionsOf(v: Vod): List<Vod> = versionsMapState[filmKey(v.name)] ?: listOf(v)
 
+    /** Versions d'un seul film, trouvées tout de suite : on ne compare que les titres qui contiennent son mot le plus long. */
+    private val versionsFound = java.util.concurrent.ConcurrentHashMap<String, List<Vod>>()
+    suspend fun findVersions(v: Vod): List<Vod> = withContext(Dispatchers.Default) {
+        val key = filmKey(v.name)
+        versionsFound[key]?.let { return@withContext it }
+        versionsMapState[key]?.let { return@withContext it }
+        val word = com.lumo.tv.data.TmdbArt.split(v.name).first.split(Regex("[^\\p{L}\\p{N}]+")).maxByOrNull { it.length }.orEmpty()
+        val list = if (word.length < 2) listOf(v) else vods.filter { it.name.contains(word, ignoreCase = true) && filmKey(it.name) == key }.ifEmpty { listOf(v) }
+        versionsFound[key] = list
+        list
+    }
+
     /** Une seule affiche par film dans les listes. */
     fun dedupeFilms(list: List<Vod>): List<Vod> = list.distinctBy { filmKey(it.name) }
 
@@ -515,7 +527,12 @@ class AppModel(private val context: Context) {
         var label = (listOfNotNull(lang) + tags).joinToString(" · ").ifBlank { "Version" }
         val same = all.count { o -> o !== v && (Regex("""^\s*([A-Za-z]{2,4})\s*[-|:]""").find(o.name)?.groupValues?.get(1)?.uppercase().let { l ->
             (listOfNotNull(l) + versionTag.findAll(o.name).map { it.value.uppercase() }.filter { it != l }.distinct()).joinToString(" · ").ifBlank { "Version" } } == label) }
-        if (same > 0) vodCats.firstOrNull { it.id == v.catId }?.name?.let { label += " · " + it.substringAfter("|").trim() }
+        if (same > 0) {
+            // Même langue en double : on précise avec la qualité de la catégorie (UHD, FHD…), sinon son nom court
+            val cat = vodCats.firstOrNull { it.id == v.catId }?.name.orEmpty()
+            val q = Regex("""(?i)\b(4k|uhd|fhd|hd|sd|3d|hdr|vip)\b""").find(cat)?.value?.uppercase()
+            label += " · " + (q ?: cat.substringAfter("|").trim().lowercase().replaceFirstChar { it.uppercase() }.take(18))
+        }
         return label
     }
 
