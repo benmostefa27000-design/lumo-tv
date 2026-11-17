@@ -137,14 +137,16 @@ fun HomeScreen(m: AppModel) {
     val top10 by produceState(initialValue = emptyList<Vod>(), vods, tmdbKey) {
         if (tmdbKey.isBlank() || vods.isEmpty()) return@produceState
         val trending = withContext(Dispatchers.IO) { com.lumo.tv.data.TmdbArt.trendingTitles() }
-        value = withContext(Dispatchers.Default) {
-            val idx = HashMap<String, Vod>()
-            vods.sortedBy { if (it.name.trim().startsWith("FR", true)) 0 else 1 }.forEach { v ->
-                val b = m.filmKey(v.name).substringBefore("|")
-                if (b.isNotBlank() && b !in idx) idx[b] = v
-            }
-            trending.mapNotNull { (t, o) -> idx[m.filmKey(t).substringBefore("|")] ?: idx[m.filmKey(o).substringBefore("|")] }.distinctBy { it.id }.take(10)
-        }
+        value = m.matchTitles(trending).filter { it.catId in vodOk }.take(10)
+    }
+    // « Parce que tu as regardé … » : conseils TMDB à partir du dernier film regardé, trouvés dans ton catalogue
+    val lastFilm = progress.firstOrNull { it.kind == "vod" }
+    val recos by produceState(initialValue = "" to emptyList<Vod>(), lastFilm?.title, vods, tmdbKey) {
+        val t = lastFilm?.title ?: return@produceState
+        if (tmdbKey.isBlank() || vods.isEmpty()) return@produceState
+        val titles = withContext(Dispatchers.IO) { com.lumo.tv.data.TmdbArt.recommendTitles(t) }
+        val found = m.matchTitles(titles).filter { it.catId in vodOk && m.filmKey(it.name) != m.filmKey(t) }.take(20)
+        value = com.lumo.tv.data.TmdbArt.split(t).first to found
     }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val listScope = rememberCoroutineScope()
@@ -281,6 +283,7 @@ fun HomeScreen(m: AppModel) {
                 }
             }
         }
+        if (recos.second.size >= 3) item(key = "recos") { FlowOrRow(m, "Parce que tu as regardé ${recos.first}", "rc", recos.second, cardW) }
         if (recentSeries.isNotEmpty()) item(key = "rser") { FlowOrRow(m, "Séries mises à jour", "rs", recentSeries.take(25), cardW) }
         // Accueil allégé : après « Nouveautés », seulement les séries et les films mis à jour
         val moreVods = recentVods.drop(25).ifEmpty { recentVods }

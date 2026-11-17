@@ -151,6 +151,71 @@ object TmdbArt {
         }
     }
 
+    /** Bande-annonce YouTube (clé vidéo) : en français si possible, sinon en anglais. */
+    suspend fun trailer(kind: String, raw: String): String {
+        val apiKey = key
+        val client = http ?: return ""
+        if (apiKey.isBlank() || raw.isBlank()) return ""
+        val k = "trailer|$kind|$raw"
+        logoMem[k]?.let { return it }
+        return limiter.withPermit {
+            val (name, year) = split(raw)
+            val res = try {
+                val id = findBest(client, apiKey, kind, name, year)?.optInt("id") ?: 0
+                if (id <= 0) "" else {
+                    fun pick(lang: String): String {
+                        val req = okhttp3.Request.Builder().url("https://api.themoviedb.org/3/$kind/$id/videos?api_key=$apiKey&language=$lang").build()
+                        val arr = client.newCall(req).execute().use { r -> if (r.isSuccessful) r.body?.string()?.let { org.json.JSONObject(it).optJSONArray("results") } else null } ?: return ""
+                        val l = (0 until arr.length()).map { arr.getJSONObject(it) }.filter { it.optString("site") == "YouTube" }
+                        return (l.firstOrNull { it.optString("type") == "Trailer" } ?: l.firstOrNull { it.optString("type") == "Teaser" } ?: l.firstOrNull())?.optString("key").orEmpty()
+                    }
+                    pick("fr-FR").ifBlank { pick("en-US") }
+                }
+            } catch (_: Exception) { "" }
+            logoMem[k] = res
+            res
+        }
+    }
+
+    private fun getJson(client: okhttp3.OkHttpClient, url: String): org.json.JSONObject? =
+        client.newCall(okhttp3.Request.Builder().url(url).build()).execute().use { r -> if (r.isSuccessful) r.body?.string()?.let { org.json.JSONObject(it) } else null }
+
+    private fun titlesOf(arr: org.json.JSONArray?): List<Pair<String, String>> =
+        (0 until (arr?.length() ?: 0)).map { arr!!.getJSONObject(it) }.map { (it.optString("title")) to it.optString("original_title") }
+
+    /** Films conseillés par TMDB pour ce film (« Parce que tu as regardé… »). */
+    suspend fun recommendTitles(raw: String): List<Pair<String, String>> {
+        val apiKey = key; val client = http ?: return emptyList()
+        if (apiKey.isBlank()) return emptyList()
+        return limiter.withPermit {
+            try {
+                val (name, year) = split(raw)
+                val id = findBest(client, apiKey, "movie", name, year)?.optInt("id") ?: 0
+                if (id <= 0) emptyList() else titlesOf(getJson(client, "https://api.themoviedb.org/3/movie/$id/recommendations?api_key=$apiKey&language=fr-FR")?.optJSONArray("results"))
+            } catch (_: Exception) { emptyList() }
+        }
+    }
+
+    /** Les autres films de la même saga (Avengers, Fast & Furious…), dans l'ordre de sortie. */
+    suspend fun collectionTitles(raw: String): Pair<String, List<Pair<String, String>>> {
+        val apiKey = key; val client = http ?: return "" to emptyList()
+        if (apiKey.isBlank()) return "" to emptyList()
+        return limiter.withPermit {
+            try {
+                val (name, year) = split(raw)
+                val id = findBest(client, apiKey, "movie", name, year)?.optInt("id") ?: 0
+                val col = if (id <= 0) null else getJson(client, "https://api.themoviedb.org/3/movie/$id?api_key=$apiKey&language=fr-FR")?.optJSONObject("belongs_to_collection")
+                val cid = col?.optInt("id") ?: 0
+                if (cid <= 0) "" to emptyList() else {
+                    val c = getJson(client, "https://api.themoviedb.org/3/collection/$cid?api_key=$apiKey&language=fr-FR")
+                    val parts = c?.optJSONArray("parts")
+                    val sorted = (0 until (parts?.length() ?: 0)).map { parts!!.getJSONObject(it) }.sortedBy { it.optString("release_date").ifBlank { "9999" } }
+                    (c?.optString("name").orEmpty()) to sorted.map { it.optString("title") to it.optString("original_title") }
+                }
+            } catch (_: Exception) { "" to emptyList() }
+        }
+    }
+
     /** Films les plus vus de la semaine (titres français et originaux) pour la rangée « Top 10 ». */
     suspend fun trendingTitles(): List<Pair<String, String>> {
         val apiKey = key

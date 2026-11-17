@@ -220,6 +220,7 @@ fun MovieDetailScreen(m: AppModel, v0: Vod) {
                 LumoButton(if (fav) "Dans ma liste" else "Ma liste", primary = false, icon = { Icon(if (fav) Icons.Default.Check else Icons.Default.Add, null, tint = Color.White) }) {
                     m.toggleFav("vod", v.id)
                 }
+                TrailerButton("movie", v.name, info?.trailer)
                 if (!m.isTv) SendToTvButton(m) {
                     org.json.JSONObject().put("type", "play_vod").put("id", v.id).put("title", v.name).put("img", v.icon).put("ext", v.ext)
                 }
@@ -228,6 +229,24 @@ fun MovieDetailScreen(m: AppModel, v0: Vod) {
             info?.cast?.takeIf { it.isNotBlank() }?.let { Text("Avec : $it", color = C.Sub, fontSize = 14.sp) }
             info?.director?.takeIf { it.isNotBlank() }?.let { Text("Réalisation : $it", color = C.Sub, fontSize = 14.sp) }
             if (info == null) Text("Chargement des infos…", color = C.Dim, fontSize = 13.sp)
+            // La saga : les autres films de la même série de films, s'ils sont dans ton abonnement
+            val tk = com.lumo.tv.data.TmdbArt.key
+            val saga by produceState(initialValue = "" to emptyList<Vod>(), v0.id, tk) {
+                if (tk.isBlank()) return@produceState
+                val (name, titles) = withContext(Dispatchers.IO) { com.lumo.tv.data.TmdbArt.collectionTitles(v0.name) }
+                val found = m.matchTitles(titles)
+                if (found.size >= 2) value = name to found
+            }
+            if (saga.second.size >= 2) {
+                Text(saga.first.ifBlank { "La saga" }, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 10.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 6.dp)) {
+                    items(saga.second, key = { it.id }) { f ->
+                        PosterCard(f.name, f.icon, if (m.isTv) 120.dp else 96.dp, badge = if (m.filmKey(f.name) == m.filmKey(v.name)) "EN COURS" else null, kind = "movie") {
+                            if (m.filmKey(f.name) != m.filmKey(v.name)) m.go(Screen.MovieDetail(f))
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -287,6 +306,7 @@ fun SeriesDetailScreen(m: AppModel, s: Series) {
                         LumoButton(if (fav) "Dans ma liste" else "Ma liste", primary = false, requester = favFr, icon = { Icon(if (fav) Icons.Default.Check else Icons.Default.Add, null, tint = Color.White) }) {
                             m.toggleFav("series", s.id)
                         }
+                        TrailerButton("tv", s.name)
                     }
                 }
             }

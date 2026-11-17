@@ -359,3 +359,20 @@ fun MetaLine(texts: List<String>, badges: List<String> = emptyList(), fontSize: 
         texts.drop(1).forEach { Text(it, color = Color(0xFFD8D8D8), fontSize = fontSize, maxLines = 1) }
     }
 }
+
+
+/** Bouton « Bande-annonce » : ouvre la vidéo dans YouTube (ou le navigateur). Caché si aucune n'est trouvée. */
+@Composable
+fun TrailerButton(kind: String, raw: String, providerKey: String? = null) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val tk = com.lumo.tv.data.TmdbArt.key
+    val key by produceState(initialValue = providerKey?.takeIf { it.length in 8..15 && !it.contains("/") } ?: "", kind, raw, tk) {
+        if (value.isBlank() && tk.isNotBlank()) value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.lumo.tv.data.TmdbArt.trailer(kind, raw) }
+    }
+    if (key.isBlank()) return
+    LumoButton("Bande-annonce", primary = false, icon = { Text("▶", color = Color.White, fontSize = 13.sp) }) {
+        val app = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("vnd.youtube:$key")).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        val web = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/watch?v=$key")).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        try { ctx.startActivity(app) } catch (_: Exception) { try { ctx.startActivity(web) } catch (_: Exception) { } }
+    }
+}

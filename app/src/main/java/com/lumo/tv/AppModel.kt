@@ -529,6 +529,22 @@ class AppModel(private val context: Context) {
         list
     }
 
+    /** Retrouve dans le catalogue des films donnés par leur titre TMDB (version française en priorité). */
+    private var titleIndex: Pair<List<Vod>, Map<String, Vod>>? = null
+    suspend fun matchTitles(titles: List<Pair<String, String>>): List<Vod> = withContext(Dispatchers.Default) {
+        val cur = vods
+        val idx = titleIndex?.takeIf { it.first === cur }?.second ?: run {
+            val map = HashMap<String, Vod>()
+            cur.sortedBy { if (it.name.trim().startsWith("FR", true)) 0 else 1 }.forEach { v ->
+                val b = filmKey(v.name).substringBefore("|")
+                if (b.isNotBlank() && b !in map) map[b] = v
+            }
+            titleIndex = cur to map
+            map
+        }
+        titles.mapNotNull { (t, o) -> idx[filmKey(t).substringBefore("|")] ?: idx[filmKey(o).substringBefore("|")] }.distinctBy { it.id }
+    }
+
     /** Une seule affiche par film dans les listes. */
     fun dedupeFilms(list: List<Vod>): List<Vod> = list.distinctBy { filmKey(it.name) }
 
