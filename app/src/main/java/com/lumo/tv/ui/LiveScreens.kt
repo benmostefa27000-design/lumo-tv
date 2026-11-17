@@ -1,5 +1,7 @@
 package com.lumo.tv.ui
 
+import androidx.compose.ui.graphics.graphicsLayer
+
 import java.util.Locale
 
 import java.util.Date
@@ -129,7 +131,7 @@ fun LiveScreen(m: AppModel) {
             horizontalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
-            LazyColumn(Modifier.width(220.dp).fillMaxHeight().focusRequester(catFr).focusGroup(), verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+            LazyColumn(Modifier.width(175.dp).fillMaxHeight().focusRequester(catFr).focusGroup(), verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
                 item(key = "__sort") { Chip(sortLabel, false) { nextSort() } }
                 items(catItems, key = { it.first }) { (id, name) ->
                     FocusBox(modifier = Modifier.fillMaxWidth(), scale = 1.03f, onClick = { sel = id }) { f ->
@@ -146,8 +148,9 @@ fun LiveScreen(m: AppModel) {
             // Aperçu à droite (grand) : la chaîne sélectionnée, son programme et la suite
             var focusedCh by remember(sel) { mutableStateOf<LiveStream?>(null) }
             @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
-            ChannelList(m, list, Modifier.weight(1f).focusRequester(chanFr).focusGroup()) { focusedCh = it }
-            ChannelPreview(m, focusedCh ?: list.firstOrNull(), Modifier.weight(1.3f).fillMaxHeight())
+            ChannelList(m, list, Modifier.width(270.dp).focusRequester(chanFr).focusGroup()) { focusedCh = it }
+            // Aperçu : toute la place restante (plus grand)
+            ChannelPreview(m, focusedCh ?: list.firstOrNull(), Modifier.weight(1f).fillMaxHeight())
         }
     } else {
         // Téléphone : les catégories en bas, près du pouce
@@ -385,53 +388,57 @@ private fun ChannelPreview(m: AppModel, s: LiveStream?, modifier: Modifier) {
 }
 
 
-/** Aperçu vidéo du Direct : démarre après 1,2 s sur la même chaîne, s'arrête dès qu'on change ou qu'on quitte. */
+/** Aperçu vidéo du Direct : démarre vite sur la chaîne sélectionnée ; le logo reste affiché jusqu'à la 1re image. */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 private fun LivePreviewVideo(m: AppModel, s: LiveStream) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var ready by remember { mutableStateOf(false) }
+    var shown by remember { mutableStateOf(false) }
+    var loading by remember { mutableStateOf(false) }
     val player = remember {
         val ds = androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(m.mediaHttp).setUserAgent(com.lumo.tv.data.USER_AGENT)
+        // Petit tampon : l'image démarre plus vite (c'est un aperçu)
+        val lc = androidx.media3.exoplayer.DefaultLoadControl.Builder().setBufferDurationsMs(2000, 15000, 400, 1000).build()
         androidx.media3.exoplayer.ExoPlayer.Builder(context)
             .setMediaSourceFactory(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(ds))
+            .setLoadControl(lc)
             .build().apply { playWhenReady = true }
     }
     DisposableEffect(Unit) {
+        val l = object : androidx.media3.common.Player.Listener {
+            override fun onRenderedFirstFrame() { shown = true; loading = false }
+        }
+        player.addListener(l)
         onDispose {
+            player.removeListener(l)
             player.release()
             m.previewReleasedAt = System.currentTimeMillis()
             m.closeMediaConnections()
         }
     }
     LaunchedEffect(s.id, m.appStopped) {
-        ready = false
+        shown = false
         player.stop()
         if (m.appStopped) return@LaunchedEffect
-        delay(1200)
+        delay(650)
         val c = m.client ?: return@LaunchedEffect
         val fmt = if (m.store.liveFormat == "m3u8") "m3u8" else "ts"
         val mi = androidx.media3.common.MediaItem.Builder().setUri(c.liveUrl(s.id, fmt)).apply {
             if (fmt == "m3u8") setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8)
         }.build()
+        loading = true
         player.setMediaItem(mi)
         player.prepare()
-        ready = true
     }
-    if (ready) androidx.compose.ui.viewinterop.AndroidView(
-        factory = { ctx ->
-            androidx.media3.ui.PlayerView(ctx).apply {
-                useController = false
-                this.player = player
-                resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
-                isFocusable = false
-                setShutterBackgroundColor(android.graphics.Color.BLACK)
-            }
-        },
-        modifier = Modifier.fillMaxSize()
+    // TextureView : invisible tant qu'aucune image n'est arrivée (plus d'écran noir, le logo reste visible)
+    androidx.compose.ui.viewinterop.AndroidView(
+        factory = { ctx -> android.view.TextureView(ctx).also { player.setVideoTextureView(it) } },
+        modifier = Modifier.fillMaxSize().graphicsLayer { alpha = if (shown) 1f else 0f }
+    )
+    if (loading && !shown) androidx.compose.material3.CircularProgressIndicator(
+        color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(28.dp).offset(y = 60.dp)
     )
 }
-
 
 // ---------------- Guide TV en grille ----------------
 
