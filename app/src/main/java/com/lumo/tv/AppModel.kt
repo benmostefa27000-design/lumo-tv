@@ -451,6 +451,11 @@ class AppModel(private val context: Context) {
     fun isFav(kind: String, id: String): Boolean { store.version; return id in store.favs(pid, kind) }
     fun toggleFav(kind: String, id: String) { commit(store.toggleFav(pid, kind, id)) }
 
+    /** Dernière catégorie ouverte (et position dans la liste) par onglet : on y revient après une fiche ou une lecture. */
+    val lastCat = mutableMapOf<String, String>()
+    val lastPos = mutableMapOf<String, Pair<Int, Int>>()
+    val filmListCache = mutableMapOf<String, Pair<List<Vod>, List<Vod>>>()
+
     // ---------- Liste « Voiture » (chaînes légères pour Fermata Auto / Android Auto) ----------
 
     private val qualityTag = Regex("""(?i)\b(4k|uhd|fhd|hd|sd|lq|hq|hevc|h\.?26[45]|raw|50fps|60fps|backup|vip)\b|[ᴬ-ᵡ]+|\(.*?\)|\[.*?]""")

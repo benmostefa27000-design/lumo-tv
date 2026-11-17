@@ -44,8 +44,10 @@ fun VodBrowser(m: AppModel, series: Boolean) {
     val cats = m.visibleCats(kind)
     val empty = if (series) m.series.isEmpty() else m.vods.isEmpty()
     if (empty) { if (m.loading) Loading() else Empty("Rien à afficher"); return }
-    var sel by remember(kind) { mutableStateOf(cats.firstOrNull()?.id ?: "") }
+    // On revient sur la dernière catégorie ouverte (au retour d'une fiche film/série)
+    var sel by remember(kind) { mutableStateOf(m.lastCat[kind]?.takeIf { id -> cats.any { it.id == id } } ?: cats.firstOrNull()?.id ?: "") }
     if (cats.isNotEmpty() && cats.none { it.id == sel }) sel = cats.first().id
+    LaunchedEffect(sel) { m.lastCat[kind] = sel }
     val cardW = if (m.isTv) 140.dp else 108.dp
 
     // TV : en-tête « cinéma » qui suit l'affiche sélectionnée (nom, image, note)
@@ -54,7 +56,8 @@ fun VodBrowser(m: AppModel, series: Boolean) {
         if (series) {
             val list = remember(sel, m.series) { m.series.filter { it.catId == sel } }
             LaunchedEffect(list) { if (m.isTv && hdr == null) list.firstOrNull()?.let { hdr = Triple(it.name, it.cover, it.rating) } }
-            LazyVerticalGrid(GridCells.Adaptive(cardW), mod, contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            val gs = rememberSavedGrid(m, "series|$sel")
+            LazyVerticalGrid(GridCells.Adaptive(cardW), mod, state = gs, contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(list, key = { it.id }) { s ->
                     Box(Modifier.onFocusChanged { if (it.hasFocus) hdr = Triple(s.name, s.cover, s.rating) }) {
                         PosterCard(s.name, s.cover, cardW, kind = "tv") { m.go(Screen.SeriesDetail(s)) }
@@ -63,11 +66,16 @@ fun VodBrowser(m: AppModel, series: Boolean) {
             }
         } else {
             // Calcul en arrière-plan (grosses catégories) : l'écran ne se fige pas
-            val list by produceState(initialValue = emptyList<Vod>(), sel, m.vods) {
-                value = withContext(Dispatchers.Default) { m.dedupeFilms(m.vods.filter { it.catId == sel }.sortedByDescending { it.added }) }
+            // (gardée en mémoire : au retour d'une fiche, la liste et la position sont là tout de suite)
+            val list by produceState(initialValue = m.filmListCache[sel]?.takeIf { it.first === m.vods }?.second ?: emptyList(), sel, m.vods) {
+                if (value.isNotEmpty()) return@produceState
+                val l = withContext(Dispatchers.Default) { m.dedupeFilms(m.vods.filter { it.catId == sel }.sortedByDescending { it.added }) }
+                m.filmListCache[sel] = m.vods to l
+                value = l
             }
             LaunchedEffect(list) { if (m.isTv && hdr == null) list.firstOrNull()?.let { hdr = Triple(it.name, it.icon, it.rating) } }
-            LazyVerticalGrid(GridCells.Adaptive(cardW), mod, contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            val gs = rememberSavedGrid(m, "vod|$sel")
+            LazyVerticalGrid(GridCells.Adaptive(cardW), mod, state = gs, contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(list, key = { it.id }) { v ->
                     Box(Modifier.onFocusChanged { if (it.hasFocus) hdr = Triple(v.name, v.icon, v.rating) }) {
                         PosterCard(v.name, v.icon, cardW, kind = "movie") { m.go(Screen.MovieDetail(v)) }
@@ -358,4 +366,14 @@ private fun findResume(info: SeriesInfo, last: Progress?): Pair<List<Episode>, I
     val first = info.seasons.firstOrNull { it > 0 } ?: info.seasons.firstOrNull() ?: return null
     val eps = info.episodes[first].orEmpty()
     return if (eps.isEmpty()) null else eps to 0
+}
+
+
+/** Position de défilement d'une grille, gardée quand on ouvre une fiche puis qu'on revient. */
+@Composable
+private fun rememberSavedGrid(m: AppModel, key: String): androidx.compose.foundation.lazy.grid.LazyGridState {
+    val saved = m.lastPos[key]
+    val st = remember(key) { androidx.compose.foundation.lazy.grid.LazyGridState(saved?.first ?: 0, saved?.second ?: 0) }
+    DisposableEffect(key) { onDispose { m.lastPos[key] = st.firstVisibleItemIndex to st.firstVisibleItemScrollOffset } }
+    return st
 }

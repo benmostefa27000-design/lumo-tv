@@ -67,7 +67,9 @@ fun LiveScreen(m: AppModel) {
     }
     val cats = m.visibleCats("live")
     val favs = run { m.store.version; m.store.favs(m.pid, "live") }
-    var sel by remember { mutableStateOf(if (favs.isNotEmpty()) FAV else (cats.firstOrNull()?.id ?: ALL)) }
+    // On revient sur la dernière catégorie ouverte (au retour d'une chaîne)
+    var sel by remember { mutableStateOf(m.lastCat["live"]?.takeIf { id -> id == FAV || id == AUTO || id == REPLAY || cats.any { it.id == id } } ?: if (favs.isNotEmpty()) FAV else (cats.firstOrNull()?.id ?: ALL)) }
+    LaunchedEffect(sel) { m.lastCat["live"] = sel }
     val visibleIds = remember(cats) { cats.map { it.id }.toSet() }
     val sortMode = m.liveSort
     // Dans « Favoris », une chaîne retirée reste affichée (étoile grise) jusqu'à ce qu'on change de catégorie :
