@@ -136,6 +136,7 @@ fun HomeScreen(m: AppModel) {
     val tmdbKey = com.lumo.tv.data.TmdbArt.key
     val top10 by produceState(initialValue = emptyList<Vod>(), vods, tmdbKey) {
         if (tmdbKey.isBlank() || vods.isEmpty()) return@produceState
+        kotlinx.coroutines.delay(4000)  // l'accueil s'affiche d'abord
         val trending = withContext(Dispatchers.IO) { com.lumo.tv.data.TmdbArt.trendingTitles() }
         value = m.matchTitles(trending).filter { it.catId in vodOk }.take(10)
     }
@@ -144,6 +145,7 @@ fun HomeScreen(m: AppModel) {
     val recos by produceState(initialValue = "" to emptyList<Vod>(), lastFilm?.title, vods, tmdbKey) {
         val t = lastFilm?.title ?: return@produceState
         if (tmdbKey.isBlank() || vods.isEmpty()) return@produceState
+        kotlinx.coroutines.delay(6000)
         val titles = withContext(Dispatchers.IO) { com.lumo.tv.data.TmdbArt.recommendTitles(t) }
         val found = m.matchTitles(titles).filter { it.catId in vodOk && m.filmKey(it.name) != m.filmKey(t) }.take(20)
         value = com.lumo.tv.data.TmdbArt.split(t).first to found
@@ -165,11 +167,14 @@ fun HomeScreen(m: AppModel) {
             // Depuis Lecture / Plus d'infos : on descend directement sur la 1re affiche de la rangée suivante
             if (heroFocusNow.get()) {
                 heroFocusNow.set(false)
+                val target = progFr.firstOrNull()
+                val ok = target != null && try { target.requestFocus(); true } catch (_: Exception) { false }
+                if (ok) { listScope.launch { kotlinx.coroutines.delay(30); listState.animateScrollToItem(1) }; return@onPreviewKeyEvent true }
+                if (focusMgr.moveFocus(androidx.compose.ui.focus.FocusDirection.Down)) return@onPreviewKeyEvent true
                 listScope.launch {
                     listState.scrollToItem(1)
-                    kotlinx.coroutines.delay(80)
-                    val ok = try { (progFr.firstOrNull() ?: belowHeroFr).requestFocus(); true } catch (_: Exception) { false }
-                    if (!ok) focusMgr.moveFocus(androidx.compose.ui.focus.FocusDirection.Down)
+                    kotlinx.coroutines.delay(120)
+                    if (!focusMgr.moveFocus(androidx.compose.ui.focus.FocusDirection.Down)) m.showToast("▼ : rien trouvé sous l'affiche (dis-le-moi)")
                 }
                 return@onPreviewKeyEvent true
             }
@@ -190,6 +195,7 @@ fun HomeScreen(m: AppModel) {
             Box(Modifier.onFocusChanged { heroFocused = it.hasFocus; heroFocusNow.set(it.hasFocus); if (it.hasFocus) listScope.launch { listState.animateScrollToItem(0) } }) {
                 FireHero(m, hero, heroOk.size, heroIdx % heroOk.size.coerceAtLeast(1),
                     onStep = { d -> heroIdx = ((heroIdx + d) % heroOk.size + heroOk.size) % heroOk.size },
+                    downTo = progFr.firstOrNull(),
                     onNoImage = { if (hero.id !in badHero) badHero.add(hero.id) })
             }
         }
@@ -546,7 +552,7 @@ private fun Hero(m: AppModel, v: Vod, onNoImage: () -> Unit = {}) {
 
 /** Accueil TV « cinéma » : image du film en plein écran, titre fin et espacé, badges, boutons en pilule. */
 @Composable
-private fun FireHero(m: AppModel, v: Vod, count: Int, index: Int, onStep: (Int) -> Unit, onDown: () -> Unit = {}, onNoImage: () -> Unit) {
+private fun FireHero(m: AppModel, v: Vod, count: Int, index: Int, onStep: (Int) -> Unit, onDown: () -> Unit = {}, downTo: androidx.compose.ui.focus.FocusRequester? = null, onNoImage: () -> Unit) {
     val infos = remember { mutableStateMapOf<String, VodInfo?>() }
     val plots = remember { mutableStateMapOf<String, String>() }
     LaunchedEffect(v.id) {
@@ -603,12 +609,12 @@ private fun FireHero(m: AppModel, v: Vod, count: Int, index: Int, onStep: (Int) 
                 if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && e.key == androidx.compose.ui.input.key.Key.DirectionDown) onDown()
                 false
             }) {
-                LumoButton("Lecture", modifier = Modifier.onPreviewKeyEvent { e ->
+                LumoButton("Lecture", modifier = Modifier.then(downTo?.let { d -> Modifier.focusProperties { down = d } } ?: Modifier).onPreviewKeyEvent { e ->
                     if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && e.key == androidx.compose.ui.input.key.Key.DirectionLeft) { onStep(-1); true } else false
                 }, icon = { Icon(Icons.Default.PlayArrow, null, tint = Color.Black) }) {
                     m.go(Screen.Player(com.lumo.tv.Playable.Movie(v)))
                 }
-                LumoButton("Plus d'infos", primary = false, modifier = Modifier.onPreviewKeyEvent { e ->
+                LumoButton("Plus d'infos", primary = false, modifier = Modifier.then(downTo?.let { d -> Modifier.focusProperties { down = d } } ?: Modifier).onPreviewKeyEvent { e ->
                     if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && e.key == androidx.compose.ui.input.key.Key.DirectionRight) { onStep(1); true } else false
                 }, icon = { Icon(Icons.Default.Info, null, tint = Color.White) }) {
                     m.go(Screen.MovieDetail(v))

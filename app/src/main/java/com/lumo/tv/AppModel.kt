@@ -363,7 +363,6 @@ class AppModel(private val context: Context) {
                     withContext(Dispatchers.Main) { live = l }
                     val v = c.vods(f)
                     withContext(Dispatchers.Main) { vods = v }
-                    prepareVersions(v)
                     val s = c.series(f)
                     withContext(Dispatchers.Main) { series = s }
                     checkNewEpisodes(s)
@@ -537,7 +536,8 @@ class AppModel(private val context: Context) {
         val cur = vods
         val idx = titleIndex?.takeIf { it.first === cur }?.second ?: run {
             val map = HashMap<String, Vod>()
-            cur.sortedBy { if (it.name.trim().startsWith("FR", true)) 0 else 1 }.forEach { v ->
+            val ok = allowedCatIds("vod")
+            cur.asSequence().filter { it.catId in ok }.sortedBy { if (it.name.trim().startsWith("FR", true)) 0 else 1 }.forEach { v ->
                 val b = filmKey(v.name).substringBefore("|")
                 if (b.isNotBlank() && b !in map) map[b] = v
             }
