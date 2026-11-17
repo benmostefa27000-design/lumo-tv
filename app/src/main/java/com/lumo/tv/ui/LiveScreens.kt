@@ -69,6 +69,7 @@ private const val ALL = "__all"
 private const val REPLAY = "__replay"
 private const val AUTO = "__auto"
 private const val GUIDE = "__guide"
+private const val SPORT = "__sport"
 
 @Composable
 fun LiveScreen(m: AppModel) {
@@ -103,10 +104,11 @@ fun LiveScreen(m: AppModel) {
     val sortLabel = "⇅ " + (sortLabels[sortMode] ?: "Ordre TNT")
     val hasReplay = remember(m.live, visibleIds) { m.live.any { it.archive && it.catId in visibleIds } }
     // Téléphone : liste « Voiture » (chaînes légères pour Fermata Auto)
-    val catItems = listOf(GUIDE to "📅 Guide TV", FAV to "★ Favoris") + (if (!m.isTv) listOf(AUTO to "🚗 Voiture") else emptyList()) + (if (hasReplay) listOf(REPLAY to "⟲ Rattrapage") else emptyList()) + cats.map { it.id to it.name }
+    val catItems = listOf(GUIDE to "📅 Guide TV", SPORT to "⚽ Sport", FAV to "★ Favoris") + (if (!m.isTv) listOf(AUTO to "🚗 Voiture") else emptyList()) + (if (hasReplay) listOf(REPLAY to "⟲ Rattrapage") else emptyList()) + cats.map { it.id to it.name }
     // « Guide TV » : ouvre la grille (favoris, sinon la catégorie en cours) puis revient sur la catégorie d'avant
     var prevSel by remember { mutableStateOf(sel) }
     LaunchedEffect(sel) {
+        if (sel == SPORT) { sel = prevSel; m.go(Screen.Sport); return@LaunchedEffect }
         if (sel == GUIDE) {
             val base = when (prevSel) {
                 FAV, GUIDE -> m.live.filter { it.id in favs }
@@ -553,6 +555,65 @@ private fun GuideCell(m: AppModel, title: String, sub: String, modifier: Modifie
         ) {
             Text(title, color = when { f -> Color.Black; dim -> C.Dim; else -> Color.White }, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (sub.isNotBlank()) Text(sub, color = if (f) Color(0xFF333333) else C.Sub, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+
+// ---------------- Sport ----------------
+
+/** Matchs du jour : en direct (on lance la chaîne) et à venir (rappel 5 min avant). */
+@Composable
+fun SportScreen(m: AppModel) {
+    val events by produceState<List<AppModel.SportEvent>?>(initialValue = null) { value = m.sportEvents() }
+    val hhmm = remember { SimpleDateFormat("HH:mm", Locale.FRANCE) }
+    val day = remember { SimpleDateFormat("EEEE", Locale.FRANCE) }
+    val pad = if (m.isTv) 48.dp else 16.dp
+    val now = System.currentTimeMillis()
+    Column(Modifier.fillMaxSize().padding(top = if (m.isTv) 24.dp else 10.dp)) {
+        Text("⚽ Sport", color = Color.White, fontSize = if (m.isTv) 28.sp else 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = pad))
+        Text("Matchs en direct et à venir sur les chaînes sport de ton abonnement", color = C.Sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = pad, vertical = 4.dp))
+        val ev = events
+        when {
+            ev == null -> Loading("Recherche des matchs dans le guide…")
+            ev.isEmpty() -> Empty("Aucun match trouvé dans le guide pour les prochaines 24 h.")
+            else -> {
+                val fr = rememberAutoFocus(m.isTv)
+                LazyColumn(contentPadding = PaddingValues(horizontal = pad, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    itemsIndexed(ev, key = { _, e -> e.stream.id + e.entry.start }) { i, e ->
+                        val live = e.entry.start <= now && e.entry.end > now
+                        val reminder = m.hasReminder(e.stream.id, e.entry.start)
+                        FocusBox(modifier = Modifier.fillMaxWidth(), scale = 1.02f, requester = if (i == 0) fr else null, onClick = {
+                            if (live) {
+                                val list = m.live.filter { it.catId == e.stream.catId }
+                                m.go(Screen.Player(Playable.Live(list, list.indexOfFirst { it.id == e.stream.id }.coerceAtLeast(0))))
+                            } else m.toggleReminder(e.stream, e.entry)
+                        }) { f ->
+                            Row(
+                                Modifier.fillMaxWidth().background(if (f) Color(0xFF2A2A2A) else C.Card).padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            ) {
+                                Column(Modifier.width(if (m.isTv) 92.dp else 70.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    if (live) Text("EN DIRECT", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.background(C.Red, RoundedCornerShape(50)).padding(horizontal = 7.dp, vertical = 2.dp))
+                                    else {
+                                        Text(hhmm.format(Date(e.entry.start)), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                        val sameDay = java.util.Calendar.getInstance().apply { timeInMillis = e.entry.start }.get(java.util.Calendar.DAY_OF_YEAR) == java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_YEAR)
+                                        Text(if (sameDay) "aujourd'hui" else day.format(Date(e.entry.start)), color = C.Sub, fontSize = 11.sp)
+                                    }
+                                }
+                                Column(Modifier.weight(1f)) {
+                                    Text(e.entry.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    Text(e.stream.name.substringAfter("|").trim() + if (reminder) "   🔔 rappel" else "", color = C.Sub, fontSize = 13.sp, maxLines = 1)
+                                }
+                                Box(Modifier.size(width = 64.dp, height = 40.dp), contentAlignment = Alignment.Center) {
+                                    if (e.stream.icon.isNotBlank()) AsyncImage(model = e.stream.icon, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

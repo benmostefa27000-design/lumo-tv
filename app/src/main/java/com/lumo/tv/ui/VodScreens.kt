@@ -60,7 +60,7 @@ fun VodBrowser(m: AppModel, series: Boolean) {
             LazyVerticalGrid(GridCells.Adaptive(cardW), mod, state = gs, contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(list, key = { it.id }) { s ->
                     Box(Modifier.onFocusChanged { if (it.hasFocus) hdr = Triple(s.name, s.cover, s.rating) }) {
-                        PosterCard(s.name, s.cover, cardW, kind = "tv") { m.go(Screen.SeriesDetail(s)) }
+                        PosterCard(s.name, s.cover, cardW, badge = if (s.id in m.newEpisodes) "NOUVEAU" else null, kind = "tv") { m.go(Screen.SeriesDetail(s)) }
                     }
                 }
             }
@@ -159,7 +159,7 @@ fun MyListScreen(m: AppModel) {
     if (vods.isEmpty() && series.isEmpty()) { Empty("Ta liste est vide. Ajoute des films et des séries avec le bouton « Ma liste ».") ; return }
     LazyVerticalGrid(GridCells.Adaptive(cardW), Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = LocalPad.current, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         items(vods, key = { "v" + it.id }) { v -> PosterCard(v.name, v.icon, cardW, badge = "FILM", kind = "movie") { m.go(Screen.MovieDetail(v)) } }
-        items(series, key = { "s" + it.id }) { s -> PosterCard(s.name, s.cover, cardW, badge = "SÉRIE", kind = "tv") { m.go(Screen.SeriesDetail(s)) } }
+        items(series, key = { "s" + it.id }) { s -> PosterCard(s.name, s.cover, cardW, badge = if (s.id in m.newEpisodes) "NOUVEAU" else "SÉRIE", kind = "tv") { m.go(Screen.SeriesDetail(s)) } }
     }
 }
 
@@ -255,6 +255,7 @@ fun MovieDetailScreen(m: AppModel, v0: Vod) {
 
 @Composable
 fun SeriesDetailScreen(m: AppModel, s: Series) {
+    LaunchedEffect(s.id) { m.seenSeries(s.id) }
     var info by remember(s.id) { mutableStateOf<SeriesInfo?>(null) }
     val tart = rememberTmdbArt("tv", s.name)
     var error by remember { mutableStateOf(false) }

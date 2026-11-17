@@ -57,6 +57,29 @@ object Reminders {
     }
 }
 
+/** Nouvel épisode d'une série suivie : notification sur le téléphone. */
+object NewEpisodes {
+    private const val CHANNEL = "nouveaux_episodes"
+    fun notify(context: Context, seriesId: String, title: String) {
+        if (Build.VERSION.SDK_INT >= 26) {
+            val nm = context.getSystemService(NotificationManager::class.java)
+            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Nouveaux épisodes", NotificationManager.IMPORTANCE_DEFAULT))
+        }
+        val open = Intent(context, MainActivity::class.java).setAction("com.lumo.tv.OPEN_SERIES").putExtra("series", seriesId)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val id = ("ep" + seriesId).hashCode()
+        val pi = PendingIntent.getActivity(context, id, open, PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0))
+        val n = NotificationCompat.Builder(context, CHANNEL)
+            .setSmallIcon(R.drawable.ic_launcher)
+            .setContentTitle("Nouvel épisode")
+            .setContentText(com.lumo.tv.data.TmdbArt.split(title).first.ifBlank { title } + " : de nouveaux épisodes sont disponibles")
+            .setAutoCancel(true)
+            .setContentIntent(pi)
+            .build()
+        try { NotificationManagerCompat.from(context).notify(id, n) } catch (_: SecurityException) { }
+    }
+}
+
 class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) = Reminders.notify(context, intent)
 }

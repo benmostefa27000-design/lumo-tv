@@ -39,6 +39,7 @@ sealed interface Screen {
     data object Search : Screen
     /** Guide TV en grille (chaînes × heures) pour une liste de chaînes. */
     data class TvGuide(val list: List<LiveStream>, val title: String) : Screen
+    data object Sport : Screen
     data object Categories : Screen
     data object Sources : Screen
     data object DeletedCategories : Screen
@@ -365,6 +366,7 @@ class AppModel(private val context: Context) {
                     prepareVersions(v)
                     val s = c.series(f)
                     withContext(Dispatchers.Main) { series = s }
+                    checkNewEpisodes(s)
                 }
                 c.staleSeen = false
                 c.preferCache = !force
@@ -543,6 +545,72 @@ class AppModel(private val context: Context) {
             map
         }
         titles.mapNotNull { (t, o) -> idx[filmKey(t).substringBefore("|")] ?: idx[filmKey(o).substringBefore("|")] }.distinctBy { it.id }
+    }
+
+    // ---------- Sport : matchs du jour trouvés dans le guide ----------
+
+    data class SportEvent(val stream: LiveStream, val entry: EpgEntry)
+    private val sportChan = Regex("(?i)(sport|bein|canal\\+? ?(sport|foot)|rmc|eurosport|equipe|équipe|dazn|foot|ssc|alkass|kass|ad sport|abu ?dhabi|on time|arryadia|eleven|golf|automoto|infosport)")
+    private val sportProg = Regex("(?i)(ligue ?[12]|ligue des champions|champions league|europa|conference league|premier league|liga\\b|serie a|bundesliga|coupe (de france|du monde|d'europe|d'afrique)|can 20|football|\\bfoot\\b|\\bmatch\\b|rugby|top 14|six nations|tennis|roland|wimbledon|formule ?1|\\bf1\\b|grand prix|motogp|\\bnba\\b|basket|handball|boxe|\\bufc\\b|\\bmma\\b|cyclisme|tour de france|\\bjo\\b|jeux olympiques|botola|كرة|الدوري|مباراة)")
+    private var sportCache: Pair<Long, List<SportEvent>>? = null
+
+    /** Matchs en cours et à venir (24 h) sur les chaînes sport de ton abonnement, un seul par match. */
+    suspend fun sportEvents(): List<SportEvent> = withContext(Dispatchers.IO) {
+        sportCache?.takeIf { System.currentTimeMillis() - it.first < 15 * 60_000 }?.let { return@withContext it.second }
+        val c = client ?: return@withContext emptyList()
+        val allowed = allowedCatIds("live")
+        val cats = liveCats.filter { it.id in allowed }.associateBy { it.id }
+        val chans = live.filter { it.catId in allowed && (sportChan.containsMatchIn(it.name) || sportChan.containsMatchIn(cats[it.catId]?.name.orEmpty())) }
+            .sortedBy { qualityRank(it.name) }.distinctBy { baseName(it.name) }.take(120)
+        val now = System.currentTimeMillis()
+        val out = mutableListOf<SportEvent>()
+        for (st in chans) {
+            val l = try { c.guideOnly(st) } catch (_: Throwable) { emptyList() }
+            l.filter { it.end > now && it.start < now + 24 * 3600_000L && sportProg.containsMatchIn(it.title) }
+                .forEach { out.add(SportEvent(st, it)) }
+        }
+        val res = out.sortedBy { it.entry.start }.distinctBy { it.entry.title.lowercase().trim() + it.entry.start / 600_000 }
+        sportCache = System.currentTimeMillis() to res
+        res
+    }
+
+    // ---------- Nouveaux épisodes des séries suivies (Ma liste + séries en cours) ----------
+
+    private val newEpPrefs by lazy { context.getSharedPreferences("new_episodes", Context.MODE_PRIVATE) }
+    /** Séries avec de nouveaux épisodes pas encore ouvertes : badge « NOUVEAU ». */
+    var newEpisodes by mutableStateOf<Set<String>>(emptySet())
+
+    private fun checkNewEpisodes(list: List<Series>) {
+        try {
+            val followed = store.favs(pid, "series") + store.progress(pid).filter { it.kind == "ep" }.map { it.parentId }
+            val ed = newEpPrefs.edit()
+            val fresh = newEpPrefs.getStringSet("badge", emptySet())!!.toMutableSet()
+            for (s in list) {
+                if (s.id !in followed || s.modified <= 0) continue
+                val prev = newEpPrefs.getLong("m_" + s.id, 0L)
+                if (prev == 0L) { ed.putLong("m_" + s.id, s.modified); continue }
+                if (s.modified > prev) {
+                    ed.putLong("m_" + s.id, s.modified)
+                    if (fresh.add(s.id) && !isTv) NewEpisodes.notify(context, s.id, s.name)
+                }
+            }
+            ed.putStringSet("badge", fresh).apply()
+            scope.launch(Dispatchers.Main) { newEpisodes = fresh }
+        } catch (_: Exception) { }
+    }
+
+    /** Fiche de la série ouverte : le badge « NOUVEAU » disparaît. */
+    fun seenSeries(id: String) {
+        if (id !in newEpisodes) return
+        val f = newEpisodes - id
+        newEpisodes = f
+        newEpPrefs.edit().putStringSet("badge", f).apply()
+    }
+
+    fun openSeriesById(id: String) {
+        val s = series.firstOrNull { it.id == id } ?: return
+        if (stack.isEmpty() || current == Screen.Login || current == Screen.Profiles) return
+        go(Screen.SeriesDetail(s))
     }
 
     /** Une seule affiche par film dans les listes. */

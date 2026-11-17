@@ -312,7 +312,7 @@ private fun FlowOrRow(m: AppModel, title: String, keyPrefix: String, objs: List<
             items(objs.size, key = { i -> keyPrefix + i }) { i ->
                 when (val o = objs[i]) {
                     is Vod -> PosterCard(o.name, o.icon, cardW, kind = "movie") { m.go(Screen.MovieDetail(o)) }
-                    is Series -> PosterCard(o.name, o.cover, cardW, kind = "tv") { m.go(Screen.SeriesDetail(o)) }
+                    is Series -> PosterCard(o.name, o.cover, cardW, badge = if (o.id in m.newEpisodes) "NOUVEAU" else null, kind = "tv") { m.go(Screen.SeriesDetail(o)) }
                 }
             }
         }

@@ -358,6 +358,12 @@ class XtreamClient(val acc: Account, private val http: OkHttpClient, private val
         return api
     }
 
+    /** Programmes d'une chaîne lus uniquement dans les guides XMLTV déjà chargés (aucun appel par chaîne au fournisseur). */
+    fun guideOnly(s: LiveStream): List<EpgEntry> {
+        for (src in 0..2) { val l = listFrom(guide(src), s); if (l.isNotEmpty()) return l }
+        return emptyList()
+    }
+
     /** Guide en grille : programmes d'une chaîne sur les prochaines heures (et la dernière heure). */
     fun epgWindow(s: LiveStream): List<EpgEntry> {
         val now = System.currentTimeMillis()

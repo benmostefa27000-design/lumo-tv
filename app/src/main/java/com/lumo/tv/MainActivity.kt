@@ -84,6 +84,14 @@ class MainActivity : ComponentActivity() {
             }
             return
         }
+        if (i?.action == "com.lumo.tv.OPEN_SERIES") {
+            val id = i.getStringExtra("series") ?: return
+            lifecycleScope.launch {
+                repeat(40) { if (model.series.isEmpty() || model.current == Screen.Login) kotlinx.coroutines.delay(500) }
+                model.openSeriesById(id)
+            }
+            return
+        }
         if (i?.action == "com.lumo.tv.PLAY_LIVE") {
             val id = i.getStringExtra("stream") ?: return
             lifecycleScope.launch {
