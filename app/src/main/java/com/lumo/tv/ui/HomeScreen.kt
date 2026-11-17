@@ -154,12 +154,23 @@ fun HomeScreen(m: AppModel) {
     val spec = remember { centeredSpec { heroFocusNow.get() } }
     androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides (if (m.isTv) spec else MinimalBringIntoView)) {
     val focusMgr = androidx.compose.ui.platform.LocalFocusManager.current
+    val belowHeroFr = remember { androidx.compose.ui.focus.FocusRequester() }
     LazyColumn(
         Modifier.fillMaxSize().then(if (!m.isTv) Modifier else Modifier.onPreviewKeyEvent { e ->
             // TV : ▼ toujours possible. Si la télécommande ne trouve rien en dessous (rangée pas encore affichée),
             // on fait défiler la page puis on réessaie.
             if (e.type != androidx.compose.ui.input.key.KeyEventType.KeyDown || e.key != androidx.compose.ui.input.key.Key.DirectionDown) return@onPreviewKeyEvent false
-            heroFocusNow.set(false)
+            // Depuis Lecture / Plus d'infos : on descend directement sur la 1re affiche de la rangée suivante
+            if (heroFocusNow.get()) {
+                heroFocusNow.set(false)
+                listScope.launch {
+                    listState.scrollToItem(1)
+                    kotlinx.coroutines.delay(80)
+                    val ok = try { (progFr.firstOrNull() ?: belowHeroFr).requestFocus(); true } catch (_: Exception) { false }
+                    if (!ok) focusMgr.moveFocus(androidx.compose.ui.focus.FocusDirection.Down)
+                }
+                return@onPreviewKeyEvent true
+            }
             if (!focusMgr.moveFocus(androidx.compose.ui.focus.FocusDirection.Down)) {
                 listScope.launch {
                     listState.animateScrollBy(420f)
