@@ -606,6 +606,7 @@ class AppModel(private val context: Context) {
 
     fun saveProgress(p: Progress) {
         commit(store.saveProgress(pid, p))
+        if (isTv) scope.launch(Dispatchers.IO) { WatchNext.sync(context, store.progress(pid)) }
         if (p.kind == "vod") {
             val t = normTitle(p.title)
             store.progress(pid).filter { it.kind == "vod" && it.key != p.key && normTitle(it.title) == t }
@@ -890,11 +891,29 @@ class AppModel(private val context: Context) {
         }
     }
 
-    private fun openPlayer(p: Playable) {
+    /** Lien depuis la rangée « À suivre » de Google TV : reprendre le film / l'épisode. */
+    fun playFromLink(kind: String, id: String, parent: String, title: String, img: String, ext: String) {
+        when (kind) {
+            "vod" -> {
+                val v = vods.firstOrNull { it.id == id } ?: Vod(id, title, img, "", "", ext.ifBlank { "mp4" }, 0)
+                openPlayer(Playable.Movie(v), toast = false)
+            }
+            "ep" -> scope.launch {
+                val info = withContext(Dispatchers.IO) { try { client?.seriesInfo(parent) } catch (_: Exception) { null } } ?: return@launch
+                val ser = series.firstOrNull { it.id == parent } ?: Series(parent, title, img, "", "", "", "", 0)
+                for ((_, eps) in info.episodes) {
+                    val idx = eps.indexOfFirst { it.id == id }
+                    if (idx >= 0) { openPlayer(Playable.Ep(ser, eps, idx), toast = false); break }
+                }
+            }
+        }
+    }
+
+    private fun openPlayer(p: Playable, toast: Boolean = true) {
         if (current is Screen.Player) stack.removeAt(stack.lastIndex)
         if (stack.isEmpty() || current == Screen.Login || current == Screen.Profiles) { tab = Tab.Home; reset(Screen.Main) }
         go(Screen.Player(p))
-        showToast("Lancé depuis le téléphone")
+        if (toast) showToast("Lancé depuis le téléphone")
     }
 
     private fun volume(dir: Int) {

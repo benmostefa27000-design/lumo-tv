@@ -94,6 +94,15 @@ class MainActivity : ComponentActivity() {
             return
         }
         val data = i?.data ?: return
+        // Rangée « À suivre » de l'écran d'accueil Google TV
+        if (data.scheme == "lumo" && data.host == "play") {
+            lifecycleScope.launch {
+                repeat(40) { if (model.vods.isEmpty() || model.current == Screen.Login) kotlinx.coroutines.delay(500) }
+                model.playFromLink(data.getQueryParameter("kind").orEmpty(), data.getQueryParameter("id").orEmpty(), data.getQueryParameter("parent").orEmpty(),
+                    data.getQueryParameter("title").orEmpty(), data.getQueryParameter("img").orEmpty(), data.getQueryParameter("ext").orEmpty())
+            }
+            return
+        }
         if (data.scheme != "lumo" || data.host != "pair") return
         val code = data.getQueryParameter("code") ?: return
         lifecycleScope.launch {
