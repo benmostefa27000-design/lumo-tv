@@ -459,6 +459,10 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             m.closeMediaConnections()
             errorMsg = null; busyRetry = 0; busyCountdown = 0; busySince = 0L
             delay(900)
+        } else if (System.currentTimeMillis() - m.previewReleasedAt < 3000) {
+            // On arrive de l'aperçu du Direct : on attend que sa connexion soit bien fermée (sinon code 458)
+            m.closeMediaConnections()
+            delay(900)
         }
         loadedOnce = true
         load(item, fromStart)

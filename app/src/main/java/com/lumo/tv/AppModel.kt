@@ -455,6 +455,8 @@ class AppModel(private val context: Context) {
     val lastCat = mutableMapOf<String, String>()
     val lastPos = mutableMapOf<String, Pair<Int, Int>>()
     val filmListCache = mutableMapOf<String, Pair<List<Vod>, List<Vod>>>()
+    /** Moment où l'aperçu vidéo du Direct (TV) a été coupé : le lecteur attend que la connexion soit libérée. */
+    @Volatile var previewReleasedAt = 0L
 
     // ---------- Liste « Voiture » (chaînes légères pour Fermata Auto / Android Auto) ----------
 

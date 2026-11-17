@@ -157,7 +157,7 @@ private fun ChannelRow(m: AppModel, s: LiveStream, list: List<LiveStream>, index
         FocusBox(
             modifier = Modifier.weight(1f).onFocusChanged { if (it.hasFocus) onFocus?.invoke(s) }, scale = 1.02f,
             onLongClick = { m.toggleFav("live", s.id); m.showToast(if (fav) "Retirée des favoris" else "Ajoutée aux favoris ★") },
-            onClick = { m.go(Screen.Player(Playable.Live(list, index))) }
+            onClick = { if (m.isTv) m.previewReleasedAt = System.currentTimeMillis(); m.go(Screen.Player(Playable.Live(list, index))) }
         ) { f ->
             Row(
                 Modifier.fillMaxWidth().background(if (f) Color(0xFF2A2A2A) else C.Card).padding(10.dp),
@@ -339,6 +339,8 @@ private fun ChannelPreview(m: AppModel, s: LiveStream?, modifier: Modifier) {
         ) {
             if (s.icon.isNotBlank()) AsyncImage(model = s.icon, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize(0.45f))
             else Text(s.name, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            // Vraie image de la chaîne (avec le son) quand on reste un instant dessus
+            LivePreviewVideo(m, s)
             Text("EN DIRECT", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp,
                 modifier = Modifier.align(Alignment.TopStart).padding(12.dp).background(C.Red, RoundedCornerShape(50)).padding(horizontal = 9.dp, vertical = 3.dp))
         }
@@ -356,4 +358,52 @@ private fun ChannelPreview(m: AppModel, s: LiveStream?, modifier: Modifier) {
         } else Text(m.nowPlaying[s.id] ?: "Programme non disponible", color = Color.White, fontSize = 18.sp, maxLines = 2)
         if (next != null) Text("Ensuite · ${hourFmt.format(java.util.Date(next.start))}  ${next.title}", color = C.Sub, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
+}
+
+
+/** Aperçu vidéo du Direct : démarre après 1,2 s sur la même chaîne, s'arrête dès qu'on change ou qu'on quitte. */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@Composable
+private fun LivePreviewVideo(m: AppModel, s: LiveStream) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var ready by remember { mutableStateOf(false) }
+    val player = remember {
+        val ds = androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(m.mediaHttp).setUserAgent(com.lumo.tv.data.USER_AGENT)
+        androidx.media3.exoplayer.ExoPlayer.Builder(context)
+            .setMediaSourceFactory(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(ds))
+            .build().apply { playWhenReady = true }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            player.release()
+            m.previewReleasedAt = System.currentTimeMillis()
+            m.closeMediaConnections()
+        }
+    }
+    LaunchedEffect(s.id, m.appStopped) {
+        ready = false
+        player.stop()
+        if (m.appStopped) return@LaunchedEffect
+        delay(1200)
+        val c = m.client ?: return@LaunchedEffect
+        val fmt = if (m.store.liveFormat == "m3u8") "m3u8" else "ts"
+        val mi = androidx.media3.common.MediaItem.Builder().setUri(c.liveUrl(s.id, fmt)).apply {
+            if (fmt == "m3u8") setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8)
+        }.build()
+        player.setMediaItem(mi)
+        player.prepare()
+        ready = true
+    }
+    if (ready) androidx.compose.ui.viewinterop.AndroidView(
+        factory = { ctx ->
+            androidx.media3.ui.PlayerView(ctx).apply {
+                useController = false
+                this.player = player
+                resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                isFocusable = false
+                setShutterBackgroundColor(android.graphics.Color.BLACK)
+            }
+        },
+        modifier = Modifier.fillMaxSize()
+    )
 }

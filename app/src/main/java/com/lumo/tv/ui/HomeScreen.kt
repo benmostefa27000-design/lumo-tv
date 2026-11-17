@@ -158,6 +158,8 @@ fun HomeScreen(m: AppModel) {
             Box(Modifier.onFocusChanged { heroFocused = it.hasFocus; heroFocusNow.set(it.hasFocus); if (it.hasFocus) listScope.launch { listState.animateScrollToItem(0) } }) {
                 FireHero(m, hero, heroOk.size, heroIdx % heroOk.size.coerceAtLeast(1),
                     onStep = { d -> heroIdx = ((heroIdx + d) % heroOk.size + heroOk.size) % heroOk.size },
+                    // ▼ depuis Lecture / Plus d'infos : on fait défiler vers la rangée suivante (la sélection suit)
+                    onDown = { heroFocusNow.set(false); listScope.launch { listState.animateScrollToItem(1) } },
                     onNoImage = { if (hero.id !in badHero) badHero.add(hero.id) })
             }
         }
@@ -513,7 +515,7 @@ private fun Hero(m: AppModel, v: Vod, onNoImage: () -> Unit = {}) {
 
 /** Accueil TV « cinéma » : image du film en plein écran, titre fin et espacé, badges, boutons en pilule. */
 @Composable
-private fun FireHero(m: AppModel, v: Vod, count: Int, index: Int, onStep: (Int) -> Unit, onNoImage: () -> Unit) {
+private fun FireHero(m: AppModel, v: Vod, count: Int, index: Int, onStep: (Int) -> Unit, onDown: () -> Unit = {}, onNoImage: () -> Unit) {
     val infos = remember { mutableStateMapOf<String, VodInfo?>() }
     val plots = remember { mutableStateMapOf<String, String>() }
     LaunchedEffect(v.id) {
@@ -525,7 +527,7 @@ private fun FireHero(m: AppModel, v: Vod, count: Int, index: Int, onStep: (Int) 
     }
     val bg = C.Bg
     // Hauteur : le haut de la première rangée dépasse en bas de l'écran
-    val h = screenHeightDp() * 0.80f
+    val h = screenHeightDp() * 0.74f
     Box(Modifier.fillMaxWidth().height(h)) {
         androidx.compose.animation.Crossfade(targetState = v, animationSpec = androidx.compose.animation.core.tween(900), label = "cineImg", modifier = Modifier.fillMaxSize()) { f ->
             val art = rememberTmdbArt("movie", f.name)
@@ -566,7 +568,10 @@ private fun FireHero(m: AppModel, v: Vod, count: Int, index: Int, onStep: (Int) 
                 }
             }
             // Boutons hors de l'animation : la sélection de la télécommande ne saute pas quand le film change
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 6.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 6.dp).onPreviewKeyEvent { e ->
+                if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && e.key == androidx.compose.ui.input.key.Key.DirectionDown) onDown()
+                false
+            }) {
                 LumoButton("Lecture", modifier = Modifier.onPreviewKeyEvent { e ->
                     if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && e.key == androidx.compose.ui.input.key.Key.DirectionLeft) { onStep(-1); true } else false
                 }, icon = { Icon(Icons.Default.PlayArrow, null, tint = Color.Black) }) {
