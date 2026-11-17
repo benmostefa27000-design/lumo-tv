@@ -358,6 +358,19 @@ class XtreamClient(val acc: Account, private val http: OkHttpClient, private val
         return api
     }
 
+    /** Guide en grille : programmes d'une chaîne sur les prochaines heures (et la dernière heure). */
+    fun epgWindow(s: LiveStream): List<EpgEntry> {
+        val now = System.currentTimeMillis()
+        fun useful(l: List<EpgEntry>) = l.any { it.end > now } && l.any { it.start > now + 3 * 3600_000L || it.end > now + 3 * 3600_000L }
+        val api = try { shortEpg(s.id, 14) } catch (e: Exception) { emptyList() }
+        if (useful(api)) return api
+        for (src in 0..2) {
+            val l = listFrom(guide(src), s).filter { it.end > now - 3 * 3600_000L && it.start < now + 12 * 3600_000L }
+            if (l.any { it.end > now }) return l
+        }
+        return api
+    }
+
     private fun guide(src: Int): Guide? {
         synchronized(guideLocks[src]) {
             guides[src]?.let { return it }

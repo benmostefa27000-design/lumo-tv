@@ -37,6 +37,8 @@ sealed interface Screen {
     data class ChannelGuide(val stream: LiveStream, val list: List<LiveStream>) : Screen
     data class Player(val item: Playable) : Screen
     data object Search : Screen
+    /** Guide TV en grille (chaînes × heures) pour une liste de chaînes. */
+    data class TvGuide(val list: List<LiveStream>, val title: String) : Screen
     data object Categories : Screen
     data object Sources : Screen
     data object DeletedCategories : Screen

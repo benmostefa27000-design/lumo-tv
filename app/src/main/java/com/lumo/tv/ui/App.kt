@@ -65,6 +65,7 @@ fun LumoApp(m: AppModel) {
                 is Screen.ChannelGuide -> ChannelGuideScreen(m, s.stream, s.list)
                 is Screen.Player -> PlayerScreen(m, s.item)
                 Screen.Search -> SearchScreen(m)
+                is Screen.TvGuide -> GuideGridScreen(m, s.list, s.title)
                 Screen.Categories -> CategoriesScreen(m)
                 Screen.Sources -> SourcesScreen(m)
                 Screen.DeletedCategories -> DeletedCategoriesScreen(m)

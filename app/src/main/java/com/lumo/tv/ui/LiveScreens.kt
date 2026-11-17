@@ -1,5 +1,13 @@
 package com.lumo.tv.ui
 
+import java.util.Locale
+
+import java.util.Date
+
+import androidx.compose.foundation.rememberScrollState
+
+import androidx.compose.foundation.horizontalScroll
+
 import androidx.compose.ui.graphics.Brush
 
 import androidx.compose.ui.focus.onFocusChanged
@@ -58,6 +66,7 @@ private const val FAV = "__fav"
 private const val ALL = "__all"
 private const val REPLAY = "__replay"
 private const val AUTO = "__auto"
+private const val GUIDE = "__guide"
 
 @Composable
 fun LiveScreen(m: AppModel) {
@@ -70,6 +79,21 @@ fun LiveScreen(m: AppModel) {
     // On revient sur la dernière catégorie ouverte (au retour d'une chaîne)
     var sel by remember { mutableStateOf(m.lastCat["live"]?.takeIf { id -> id == FAV || id == AUTO || id == REPLAY || cats.any { it.id == id } } ?: if (favs.isNotEmpty()) FAV else (cats.firstOrNull()?.id ?: ALL)) }
     LaunchedEffect(sel) { m.lastCat["live"] = sel }
+    // « Guide TV » : ouvre la grille (favoris, sinon la catégorie en cours) puis revient sur la catégorie d'avant
+    var prevSel by remember { mutableStateOf(sel) }
+    LaunchedEffect(sel) {
+        if (sel == GUIDE) {
+            val base = when (prevSel) {
+                FAV, GUIDE -> m.live.filter { it.id in favs }
+                AUTO -> m.live.filter { it.id in m.store.favs(m.pid, "auto") }
+                ALL, REPLAY -> m.live.filter { it.catId in visibleIds }
+                else -> m.live.filter { it.catId == prevSel }
+            }.ifEmpty { m.live.filter { it.catId == cats.firstOrNull()?.id } }
+            val title = catItems.firstOrNull { it.first == prevSel }?.second ?: "Guide TV"
+            sel = prevSel
+            m.go(Screen.TvGuide(m.sortLive(base, m.liveSort).take(80), title))
+        } else prevSel = sel
+    }
     val visibleIds = remember(cats) { cats.map { it.id }.toSet() }
     val sortMode = m.liveSort
     // Dans « Favoris », une chaîne retirée reste affichée (étoile grise) jusqu'à ce qu'on change de catégorie :
@@ -92,7 +116,7 @@ fun LiveScreen(m: AppModel) {
     val sortLabel = "⇅ " + (sortLabels[sortMode] ?: "Ordre TNT")
     val hasReplay = remember(m.live, visibleIds) { m.live.any { it.archive && it.catId in visibleIds } }
     // Téléphone : liste « Voiture » (chaînes légères pour Fermata Auto)
-    val catItems = listOf(FAV to "★ Favoris") + (if (!m.isTv) listOf(AUTO to "🚗 Voiture") else emptyList()) + (if (hasReplay) listOf(REPLAY to "⟲ Rattrapage") else emptyList()) + cats.map { it.id to it.name }
+    val catItems = listOf(GUIDE to "📅 Guide TV", FAV to "★ Favoris") + (if (!m.isTv) listOf(AUTO to "🚗 Voiture") else emptyList()) + (if (hasReplay) listOf(REPLAY to "⟲ Rattrapage") else emptyList()) + cats.map { it.id to it.name }
 
     if (m.isTv) {
         // En descendant depuis les onglets, on arrive d'abord sur les chaînes (les catégories sont à gauche)
@@ -406,4 +430,122 @@ private fun LivePreviewVideo(m: AppModel, s: LiveStream) {
         },
         modifier = Modifier.fillMaxSize()
     )
+}
+
+
+// ---------------- Guide TV en grille ----------------
+
+/** Grille chaînes × heures : programme en cours = regarder, passé (rattrapage) = revoir, à venir = rappel. */
+@Composable
+fun GuideGridScreen(m: AppModel, list: List<LiveStream>, title: String) {
+    val now = remember { System.currentTimeMillis() }
+    // Fenêtre : 30 min avant maintenant → 8 h après (calée sur la demi-heure)
+    val start = remember { (now - 30 * 60_000L) / (30 * 60_000L) * (30 * 60_000L) }
+    val end = start + 8 * 3600_000L
+    val dpPerMin = if (m.isTv) 4.5f else 3.2f
+    fun w(ms: Long) = (ms / 60_000f * dpPerMin).dp
+    val chanW = if (m.isTv) 150.dp else 96.dp
+    val rowH = if (m.isTv) 64.dp else 58.dp
+    val hScroll = rememberScrollState()
+    val epg = remember { mutableStateMapOf<String, List<EpgEntry>>() }
+    var clock by remember { mutableLongStateOf(now) }
+    LaunchedEffect(Unit) { while (true) { delay(30_000); clock = System.currentTimeMillis() } }
+    // Défilement horizontal calé sur « maintenant » au départ
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    LaunchedEffect(Unit) { with(density) { hScroll.scrollTo((w(now - start - 15 * 60_000L)).roundToPx().coerceAtLeast(0)) } }
+    val hhmm = remember { SimpleDateFormat("HH:mm", Locale.FRANCE) }
+    val firstFr = remember { androidx.compose.ui.focus.FocusRequester() }
+
+    Column(Modifier.fillMaxSize().padding(top = if (m.isTv) 20.dp else 8.dp)) {
+        Row(Modifier.padding(horizontal = if (m.isTv) 40.dp else 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Guide TV", color = Color.White, fontSize = if (m.isTv) 26.sp else 22.sp, fontWeight = FontWeight.Bold)
+            Text("  ·  " + title.removePrefix("★ ").removePrefix("📅 "), color = C.Sub, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        // Frise des heures
+        Row(Modifier.fillMaxWidth().height(28.dp)) {
+            Spacer(Modifier.width(chanW + (if (m.isTv) 40.dp else 8.dp)))
+            Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
+                Box(Modifier.width(w(end - start)).fillMaxHeight()) {
+                    var t = start
+                    while (t < end) {
+                        Text(hhmm.format(Date(t)), color = C.Sub, fontSize = 13.sp, modifier = Modifier.offset(x = w(t - start) + 4.dp, y = 4.dp))
+                        t += 30 * 60_000L
+                    }
+                    Box(Modifier.offset(x = w(clock - start)).width(2.dp).fillMaxHeight().background(C.Red))
+                }
+            }
+        }
+        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            itemsIndexed(list, key = { _, s -> s.id }) { i, s ->
+                LaunchedEffect(s.id) {
+                    if (!epg.containsKey(s.id)) epg[s.id] = withContext(Dispatchers.IO) { try { m.client?.epgWindow(s) ?: emptyList() } catch (_: Exception) { emptyList() } }
+                }
+                Row(Modifier.fillMaxWidth().height(rowH).padding(start = if (m.isTv) 40.dp else 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // Chaîne (logo + nom)
+                    Row(Modifier.width(chanW).fillMaxHeight().background(C.Card, RoundedCornerShape(8.dp)).padding(6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Box(Modifier.size(rowH - 22.dp), contentAlignment = Alignment.Center) {
+                            if (s.icon.isNotBlank()) AsyncImage(model = s.icon, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+                            else Text(s.name.take(3), color = C.Sub, fontSize = 11.sp)
+                        }
+                        if (m.isTv) Text(s.name.substringAfter("|").trim(), color = Color.White, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 14.sp)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Box(Modifier.weight(1f).fillMaxHeight().horizontalScroll(hScroll)) {
+                        Box(Modifier.width(w(end - start)).fillMaxHeight()) {
+                            val progs = epg[s.id]
+                            if (progs == null) Text("…", color = C.Dim, modifier = Modifier.padding(start = w(now - start), top = 18.dp))
+                            else if (progs.none { it.end > start && it.start < end }) {
+                                // Pas de guide : une seule case « En direct »
+                                GuideCell(m, "En direct · ${s.name.substringAfter("|").trim()}", "", Modifier.offset(x = w((now - start).coerceAtLeast(0))).width(w(2 * 3600_000L)), live = true,
+                                    requester = if (i == 0) firstFr else null) { openLive(m, list, s) }
+                            } else progs.filter { it.end > start && it.start < end }.forEach { p ->
+                                val x0 = (p.start - start).coerceAtLeast(0)
+                                val x1 = (p.end - start).coerceAtMost(end - start)
+                                val isNow = p.start <= clock && p.end > clock
+                                val past = p.end <= clock
+                                val reminder = m.hasReminder(s.id, p.start)
+                                GuideCell(
+                                    m, p.title,
+                                    when { isNow -> "En cours · jusqu'à ${hhmm.format(Date(p.end))}"; past -> if (s.archive) "Revoir" else hhmm.format(Date(p.start)); else -> hhmm.format(Date(p.start)) + if (reminder) "  🔔" else "" },
+                                    Modifier.offset(x = w(x0)).width((w(x1 - x0) - 3.dp).coerceAtLeast(24.dp)),
+                                    live = isNow, dim = past && !s.archive,
+                                    requester = if (i == 0 && isNow) firstFr else null
+                                ) {
+                                    when {
+                                        isNow -> openLive(m, list, s)
+                                        past && s.archive -> m.go(Screen.Player(Playable.Replay(s, p)))
+                                        past -> m.showToast("Pas de rattrapage sur cette chaîne")
+                                        else -> m.toggleReminder(s, p)
+                                    }
+                                }
+                            }
+                            Box(Modifier.offset(x = w(clock - start)).width(2.dp).fillMaxHeight().background(C.Red.copy(alpha = 0.8f)))
+                        }
+                    }
+                }
+            }
+        }
+    }
+    LaunchedEffect(Unit) { if (m.isTv) { delay(900); try { firstFr.requestFocus() } catch (_: Exception) { } } }
+}
+
+private fun openLive(m: AppModel, list: List<LiveStream>, s: LiveStream) {
+    m.previewReleasedAt = System.currentTimeMillis()
+    m.go(Screen.Player(Playable.Live(list, list.indexOfFirst { it.id == s.id }.coerceAtLeast(0))))
+}
+
+@Composable
+private fun GuideCell(m: AppModel, title: String, sub: String, modifier: Modifier, live: Boolean = false, dim: Boolean = false,
+                      requester: androidx.compose.ui.focus.FocusRequester? = null, onClick: () -> Unit) {
+    FocusBox(modifier = modifier.fillMaxHeight(), shape = RoundedCornerShape(8.dp), scale = 1.0f, requester = requester, onClick = onClick) { f ->
+        Column(
+            Modifier.fillMaxSize().background(
+                when { f -> Color(0xFFEDEDED); live -> Color(0xFF2B2F3A); else -> Color(0xFF1A1B20) }
+            ).padding(horizontal = 8.dp, vertical = 5.dp),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(title, color = when { f -> Color.Black; dim -> C.Dim; else -> Color.White }, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (sub.isNotBlank()) Text(sub, color = if (f) Color(0xFF333333) else C.Sub, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
 }
