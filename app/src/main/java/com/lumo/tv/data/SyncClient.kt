@@ -61,4 +61,3 @@ class SyncClient(private val base: String, private val http: OkHttpClient) {
         return Triple(a, o.optString("sync"), o.optString("secret"))
     }
 }
-}

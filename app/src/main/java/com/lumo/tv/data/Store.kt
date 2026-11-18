@@ -54,9 +54,9 @@ class Store(context: Context) {
         val sec = obj(doc, "sources")
         val items = obj(sec, "items")
         val order = items.optJSONObject(src.id)?.optLong("order") ?: System.currentTimeMillis()
-        val sec = syncSecret
+        val secret = syncSecret
         // Identifiants chiffrés quand c'est possible (sinon ancien format, lisible par les anciennes versions)
-        val o = if (sec.isNotBlank()) JSONObject().put("enc", Crypto.encrypt(src.account.toJson().toString(), sec)) else src.account.toJson()
+        val o = if (secret.isNotBlank()) JSONObject().put("enc", Crypto.encrypt(src.account.toJson().toString(), secret)) else src.account.toJson()
         items.put(src.id, o.put("name", src.name).put("order", order))
         sec.put("ts", now())
         save()
