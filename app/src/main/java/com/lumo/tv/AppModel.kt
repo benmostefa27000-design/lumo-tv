@@ -629,7 +629,8 @@ class AppModel(private val context: Context) {
             // Même langue en double : on précise avec la qualité de la catégorie (UHD, FHD…), sinon son nom court
             val cat = vodCats.firstOrNull { it.id == v.catId }?.name.orEmpty()
             val q = Regex("""(?i)\b(4k|uhd|fhd|hd|sd|3d|hdr|vip)\b""").find(cat)?.value?.uppercase()
-            label += " · " + (q ?: cat.substringAfter("|").trim().lowercase().replaceFirstChar { it.uppercase() }.take(18))
+            // Pas de qualité dans le nom de la catégorie : c'est la version normale (HD), à côté d'une version UHD/4K
+            label += " · " + (q ?: "Standard")
         }
         return label
     }
