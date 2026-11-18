@@ -44,17 +44,21 @@ class SyncClient(private val base: String, private val http: OkHttpClient) {
 
     // ---------- Connexion d'une TV par code ----------
 
-    fun publishPairing(code: String, acc: Account, syncKey: String = "") {
-        put("pair/$code", acc.toJson().put("sync", syncKey).put("ts", System.currentTimeMillis()))
+    fun publishPairing(code: String, acc: Account, syncKey: String = "", secret: String = "") {
+        // Tout le contenu est chiffré avec le code affiché sur la TV (valable 15 min, effacé dès qu'il est lu)
+        val payload = acc.toJson().put("sync", syncKey).put("secret", secret).toString()
+        put("pair/$code", org.json.JSONObject().put("enc", Crypto.encrypt(payload, "pair|$code")).put("ts", System.currentTimeMillis()))
     }
 
-    /** Compte + identifiant de synchro envoyés par le téléphone. */
-    fun takePairing(code: String): Pair<Account, String>? {
-        val o = getObject("pair/$code") ?: return null
-        val ts = o.optLong("ts")
+    /** Compte + identifiant de synchro (+ secret de chiffrement) envoyés par le téléphone. */
+    fun takePairing(code: String): Triple<Account, String, String>? {
+        val o0 = getObject("pair/$code") ?: return null
+        val ts = o0.optLong("ts")
         try { delete("pair/$code") } catch (_: Exception) { }
         if (System.currentTimeMillis() - ts > 15 * 60 * 1000) return null
+        val o = o0.optString("enc").takeIf { it.isNotBlank() }?.let { Crypto.decrypt(it, "pair|$code") }?.let { org.json.JSONObject(it) } ?: o0
         val a = Account.fromJson(o) ?: return null
-        return a to o.optString("sync")
+        return Triple(a, o.optString("sync"), o.optString("secret"))
     }
+}
 }

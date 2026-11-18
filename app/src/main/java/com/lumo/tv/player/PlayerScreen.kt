@@ -522,7 +522,14 @@ fun PlayerScreen(m: AppModel, start: Playable) {
     DisposableEffect(Unit) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) { m.updatePip(player.playWhenReady, m.pipCanStep) }
-            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) { tracksTick++ }
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                tracksTick++
+                // TV : la fréquence de l'écran suit celle de la vidéo (50 Hz pour la TV, 24 Hz pour les films…)
+                if (m.isTv && m.store.matchFrameRate && activity != null) {
+                    val fps = player.videoFormat?.frameRate ?: -1f
+                    if (fps > 0 || item is Playable.Live) FrameRate.match(activity, fps, item is Playable.Live)
+                }
+            }
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 paused = !playWhenReady
                 m.updatePip(playWhenReady, m.pipCanStep)
@@ -595,6 +602,7 @@ fun PlayerScreen(m: AppModel, start: Playable) {
             player.release()
             m.closeMediaConnections()
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            activity?.let { FrameRate.reset(it) }
             if (!m.isTv) {
                 activity?.requestedOrientation = oldOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                 activity?.window?.let { w -> WindowCompat.getInsetsController(w, w.decorView).show(WindowInsetsCompat.Type.systemBars()) }

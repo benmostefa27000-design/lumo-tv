@@ -140,7 +140,7 @@ class AppModel(private val context: Context) {
             val p = profile
             stack.add(if (p != null && p.kids && store.pin().isNotEmpty()) Screen.Main else Screen.Profiles)
             loadCatalog(false)
-            if (prefsSyncKeyMissing()) store.syncKey = acc.key()
+            if (prefsSyncKeyMissing()) { store.syncKey = acc.key(); store.syncSecret = acc.fullKey() }
             scope.launch(Dispatchers.IO) {
                 try { val a = client?.auth(); withContext(Dispatchers.Main) { auth = a } } catch (_: Exception) { }
                 syncNow()
@@ -177,7 +177,7 @@ class AppModel(private val context: Context) {
             if (!a.ok) return@withContext a.message
             withContext(Dispatchers.Main) {
                 if (store.syncKey.isBlank() || store.account == null) {
-                    if (prefsSyncKeyMissing()) store.syncKey = acc.key()
+                    if (prefsSyncKeyMissing()) { store.syncKey = acc.key(); store.syncSecret = acc.fullKey() }
                 }
                 store.account = acc
                 client = c
@@ -208,6 +208,8 @@ class AppModel(private val context: Context) {
 
     /** La source en cours est ajoutée à la liste si elle n'y est pas encore. */
     fun ensureSourceRegistered(acc: Account) {
+        // Les identifiants encore en clair dans la synchro sont re-chiffrés
+        store.plainSources().forEach { commit(store.saveSource(it)) }
         if (store.sources().none { it.account.key() == acc.key() }) {
             val name = auth?.let { "Abonnement principal" } ?: "Abonnement"
             commit(store.saveSource(Source("s_" + acc.key().take(10), if (store.sources().isEmpty()) name else acc.server.substringAfter("//").substringBefore(":"), acc)))
@@ -755,8 +757,9 @@ class AppModel(private val context: Context) {
         while (isActive && System.currentTimeMillis() - start < 10 * 60 * 1000) {
             val got = try { sync.takePairing(code) } catch (_: Exception) { null }
             if (got != null) {
-                val (acc, sk) = got
+                val (acc, sk, secret) = got
                 if (sk.isNotBlank()) store.syncKey = sk
+                if (secret.isNotBlank()) store.syncSecret = secret
                 val err = login(acc)
                 return@withContext err == null
             }
@@ -770,7 +773,7 @@ class AppModel(private val context: Context) {
         if (!sync.enabled) return@withContext "Synchro désactivée"
         val clean = code.uppercase().filter { it.isLetterOrDigit() }
         if (clean.length != 6) return@withContext "Le code fait 6 caractères"
-        try { sync.publishPairing(clean, acc, store.syncKey); null } catch (e: Exception) { "Envoi impossible : ${e.message}" }
+        try { sync.publishPairing(clean, acc, store.syncKey, store.syncSecret); null } catch (e: Exception) { "Envoi impossible : ${e.message}" }
     }
 
     // ---------- Programme en cours (guide) ----------

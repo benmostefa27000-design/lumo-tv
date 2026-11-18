@@ -31,12 +31,21 @@ class Store(context: Context) {
         get() = prefs.getString("syncKey", null)?.takeIf { it.isNotBlank() } ?: (account?.key() ?: "")
         set(v) { prefs.edit().putString("syncKey", v).apply() }
 
-    /** Sources enregistrées (synchronisées entre appareils). */
+    /** Secret de chiffrement de la synchro (jamais envoyé en clair) : empreinte complète du compte principal. */
+    var syncSecret: String
+        get() = prefs.getString("syncSecret", null)?.takeIf { it.isNotBlank() }
+            ?: account?.takeIf { it.key() == syncKey }?.fullKey()?.also { prefs.edit().putString("syncSecret", it).apply() } ?: ""
+        set(v) { prefs.edit().putString("syncSecret", v).apply() }
+
+    /** Sources enregistrées (synchronisées entre appareils, identifiants chiffrés). */
     fun sources(): List<Source> {
         val items = doc.optJSONObject("sources")?.optJSONObject("items") ?: return emptyList()
+        val sec = syncSecret
         return items.keys().asSequence().mapNotNull { id ->
             val o = items.optJSONObject(id) ?: return@mapNotNull null
-            val a = Account.fromJson(o) ?: return@mapNotNull null
+            val enc = o.optString("enc")
+            val a = (if (enc.isNotBlank() && sec.isNotBlank()) Crypto.decrypt(enc, sec)?.let { Account.fromJson(JSONObject(it)) } else null)
+                ?: Account.fromJson(o) ?: return@mapNotNull null
             Source(id, o.optString("name").ifBlank { a.server }, a) to o.optLong("order")
         }.sortedBy { it.second }.map { it.first }.toList()
     }
@@ -45,10 +54,21 @@ class Store(context: Context) {
         val sec = obj(doc, "sources")
         val items = obj(sec, "items")
         val order = items.optJSONObject(src.id)?.optLong("order") ?: System.currentTimeMillis()
-        items.put(src.id, src.account.toJson().put("name", src.name).put("order", order))
+        val sec = syncSecret
+        // Identifiants chiffrés quand c'est possible (sinon ancien format, lisible par les anciennes versions)
+        val o = if (sec.isNotBlank()) JSONObject().put("enc", Crypto.encrypt(src.account.toJson().toString(), sec)) else src.account.toJson()
+        items.put(src.id, o.put("name", src.name).put("order", order))
         sec.put("ts", now())
         save()
         return Change("sources", JSONObject(sec.toString()))
+    }
+
+    /** Sources encore enregistrées en clair (anciennes versions) : à re-chiffrer. */
+    fun plainSources(): List<Source> {
+        if (syncSecret.isBlank()) return emptyList()
+        val items = doc.optJSONObject("sources")?.optJSONObject("items") ?: return emptyList()
+        val plainIds = items.keys().asSequence().filter { id -> items.optJSONObject(id)?.has("pass") == true }.toSet()
+        return sources().filter { it.id in plainIds }
     }
 
     fun removeSource(id: String): Change {
@@ -62,6 +82,11 @@ class Store(context: Context) {
     var account: Account?
         get() = try { Account.fromJson(JSONObject(prefs.getString("account", "") ?: "")) } catch (e: Exception) { null }
         set(v) { prefs.edit().putString("account", v?.toJson()?.toString() ?: "").apply(); version++ }
+
+    /** Fréquence d'image adaptée (TV) : activée par défaut. */
+    var matchFrameRate: Boolean
+        get() = prefs.getBoolean("matchFps", true)
+        set(v) { prefs.edit().putBoolean("matchFps", v).apply(); version++ }
 
     var liveFormat: String
         get() = prefs.getString("liveFormat", "ts") ?: "ts"

@@ -12,6 +12,12 @@ data class Account(val server: String, val user: String, val pass: String) {
         return bytes.joinToString("") { "%02x".format(it) }.take(32)
     }
 
+    /** Empreinte complète (64 caractères) : la 1re moitié sert de dossier de synchro, l'ensemble sert de secret de chiffrement. */
+    fun fullKey(): String {
+        val md = MessageDigest.getInstance("SHA-256")
+        return md.digest("$server|$user|$pass".toByteArray()).joinToString("") { "%02x".format(it) }
+    }
+
     fun toJson(): JSONObject = JSONObject().put("server", server).put("user", user).put("pass", pass)
 
     companion object {
