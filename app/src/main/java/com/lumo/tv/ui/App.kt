@@ -1,5 +1,7 @@
 package com.lumo.tv.ui
 
+import androidx.compose.foundation.focusGroup
+
 import androidx.compose.foundation.clickable
 
 import androidx.compose.foundation.border
@@ -127,9 +129,22 @@ fun MainScreen(m: AppModel) {
         // TV : la barre du haut flotte par-dessus le contenu (l'accueil passe dessous, en plein écran)
         Box(Modifier.fillMaxSize()) {
             // Accueil, Films et Séries passent sous la barre (image en plein écran) ; les autres onglets commencent dessous
-            Box(Modifier.fillMaxSize().padding(top = if (m.tab == Tab.Home || m.tab == Tab.Movies || m.tab == Tab.Series) 0.dp else 66.dp)) { TabContent(m) }
+            // Le contenu passe sous la barre : Android ne « voit » plus rien en dessous des onglets avec ▼.
+            // On envoie donc nous-mêmes la sélection dans le contenu (1er élément : Lecture sur l'accueil).
+            val contentFr = remember { FocusRequester() }
+            Box(
+                Modifier.fillMaxSize().padding(top = if (m.tab == Tab.Home || m.tab == Tab.Movies || m.tab == Tab.Series) 0.dp else 66.dp)
+                    .focusRequester(contentFr).focusGroup()
+            ) { TabContent(m) }
             Box(Modifier.fillMaxWidth().height(110.dp).background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xE6000000), Color(0x00000000)))))
-            TvTopBar(m)
+            Box(Modifier.onPreviewKeyEvent { e ->
+                if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && e.key == androidx.compose.ui.input.key.Key.DirectionDown) {
+                    // 1) l'écran a indiqué où entrer (ex. « Lecture » sur l'accueil) ; 2) sinon le 1er élément du contenu
+                    val ok = m.tvEntry?.let { try { it.requestFocus(); true } catch (_: Exception) { false } } ?: false
+                    if (!ok) try { contentFr.requestFocus() } catch (_: Exception) { }
+                    true
+                } else false
+            }) { TvTopBar(m) }
         }
     } else if (isPhoneLandscape(false)) {
         // Téléphone à l'horizontale : onglets en haut (comme sur la TV), pas de barre en bas

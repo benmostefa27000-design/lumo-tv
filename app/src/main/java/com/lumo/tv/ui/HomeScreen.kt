@@ -604,12 +604,15 @@ private fun FireHero(m: AppModel, v: Vod, count: Int, index: Int, onStep: (Int) 
                     }
                 }
             }
+            // ▼ depuis les onglets du haut → « Lecture »
+            val lectureFr = remember { androidx.compose.ui.focus.FocusRequester() }
+            DisposableEffect(lectureFr) { m.tvEntry = lectureFr; onDispose { if (m.tvEntry === lectureFr) m.tvEntry = null } }
             // Boutons hors de l'animation : la sélection de la télécommande ne saute pas quand le film change
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 6.dp).onPreviewKeyEvent { e ->
                 if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && e.key == androidx.compose.ui.input.key.Key.DirectionDown) onDown()
                 false
             }) {
-                LumoButton("Lecture", modifier = Modifier.then(downTo?.let { d -> Modifier.focusProperties { down = d } } ?: Modifier).onPreviewKeyEvent { e ->
+                LumoButton("Lecture", requester = lectureFr, modifier = Modifier.then(downTo?.let { d -> Modifier.focusProperties { down = d } } ?: Modifier).onPreviewKeyEvent { e ->
                     if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && e.key == androidx.compose.ui.input.key.Key.DirectionLeft) { onStep(-1); true } else false
                 }, icon = { Icon(Icons.Default.PlayArrow, null, tint = Color.Black) }) {
                     m.go(Screen.Player(com.lumo.tv.Playable.Movie(v)))

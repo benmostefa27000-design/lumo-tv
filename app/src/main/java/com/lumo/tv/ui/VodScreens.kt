@@ -114,7 +114,12 @@ fun VodBrowser(m: AppModel, series: Boolean) {
             }
             Column(Modifier.fillMaxSize().padding(top = sh * 0.40f)) {
                 LazyRow(contentPadding = PaddingValues(horizontal = 44.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(cats, key = { it.id }) { c -> Chip(c.name, sel == c.id) { sel = c.id; hdr = null } }
+                    items(cats, key = { it.id }) { c ->
+                        // ▼ depuis les onglets du haut → la catégorie en cours
+                        val fr = remember { androidx.compose.ui.focus.FocusRequester() }
+                        if (sel == c.id) DisposableEffect(fr) { m.tvEntry = fr; onDispose { if (m.tvEntry === fr) m.tvEntry = null } }
+                        Chip(c.name, sel == c.id, requester = fr) { sel = c.id; hdr = null }
+                    }
                 }
                 content(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 32.dp))
             }

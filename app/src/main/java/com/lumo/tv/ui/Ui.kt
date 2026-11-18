@@ -137,8 +137,8 @@ fun LumoButton(
 }
 
 @Composable
-fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
-    FocusBox(shape = RoundedCornerShape(50), scale = 1.05f, onClick = onClick) { _ ->
+fun Chip(text: String, selected: Boolean, requester: FocusRequester? = null, onClick: () -> Unit) {
+    FocusBox(shape = RoundedCornerShape(50), scale = 1.05f, requester = requester, onClick = onClick) { _ ->
         Box(
             Modifier
                 .background(if (selected) Color.White else Color.Transparent)

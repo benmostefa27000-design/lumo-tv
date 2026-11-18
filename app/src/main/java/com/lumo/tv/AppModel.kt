@@ -468,6 +468,8 @@ class AppModel(private val context: Context) {
 
     /** Dernière catégorie ouverte (et position dans la liste) par onglet : on y revient après une fiche ou une lecture. */
     val lastCat = mutableMapOf<String, String>()
+    /** TV : où entre la sélection quand on appuie sur ▼ depuis les onglets du haut (fourni par l'écran affiché). */
+    var tvEntry: androidx.compose.ui.focus.FocusRequester? = null
     val lastPos = mutableMapOf<String, Pair<Int, Int>>()
     val filmListCache = mutableMapOf<String, Pair<List<Vod>, List<Vod>>>()
     /** Moment où l'aperçu vidéo du Direct (TV) a été coupé : le lecteur attend que la connexion soit libérée. */
