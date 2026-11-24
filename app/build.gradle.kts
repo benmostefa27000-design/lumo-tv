@@ -39,7 +39,10 @@ android {
 
     buildTypes {
         getByName("release") {
-            isMinifyEnabled = false
+            // R8 : Compose est beaucoup plus fluide une fois optimisé (indispensable sur Fire Stick)
+            isMinifyEnabled = true
+            isShrinkResources = false  // le lecteur retrouve ses boutons par nom
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("lumo")
         }
         getByName("debug") {

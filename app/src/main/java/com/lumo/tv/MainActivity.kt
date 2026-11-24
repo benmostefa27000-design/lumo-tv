@@ -17,6 +17,18 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Crash.install(applicationContext)
         model = AppModel(applicationContext)
+        // Images : moins de mémoire sur TV (Fire Stick = peu de RAM), cache disque pour ne pas retélécharger
+        try {
+            val tv = model.isTv
+            coil.Coil.setImageLoader(
+                coil.ImageLoader.Builder(applicationContext)
+                    .allowRgb565(tv)
+                    .crossfade(!tv)
+                    .memoryCache { coil.memory.MemoryCache.Builder(applicationContext).maxSizePercent(if (tv) 0.15 else 0.25).build() }
+                    .diskCache { coil.disk.DiskCache.Builder().directory(cacheDir.resolve("images")).maxSizeBytes(200L * 1024 * 1024).build() }
+                    .build()
+            )
+        } catch (_: Exception) { }
         handleIntent(intent)
         setContent { LumoApp(model) }
         // Boutons du mini-lecteur

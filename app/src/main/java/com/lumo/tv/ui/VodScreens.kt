@@ -35,6 +35,7 @@ import com.lumo.tv.Screen
 import com.lumo.tv.data.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.collectLatest
 
 // ---------------- Films / Séries par catégorie ----------------
 
@@ -51,10 +52,17 @@ fun VodBrowser(m: AppModel, series: Boolean) {
     val cardW = if (m.isTv) 140.dp else 108.dp
 
     // TV : en-tête « cinéma » qui suit l'affiche sélectionnée (nom, image, note)
-    var hdr by remember(kind) { mutableStateOf<Triple<String, String, String>?>(null) }
+    // (lu uniquement dans VodHeader : bouger la sélection ne redessine que l'en-tête, pas toute la grille)
+    val hdrState = remember(kind) { mutableStateOf<Triple<String, String, String>?>(null) }
+    var hdr by hdrState
     val content: @Composable (Modifier) -> Unit = { mod ->
         if (series) {
-            val list = remember(sel, m.series) { m.series.filter { it.catId == sel } }
+            val list = key(sel, m.series) {
+                val cat = sel; val all = m.series
+                produceState(initialValue = emptyList<com.lumo.tv.data.Series>(), cat, all) {
+                    value = withContext(Dispatchers.Default) { all.filter { it.catId == cat } }
+                }.value
+            }
             LaunchedEffect(list) { if (m.isTv && hdr == null) list.firstOrNull()?.let { hdr = Triple(it.name, it.cover, it.rating) } }
             val gs = rememberSavedGrid(m, "series|$sel")
             LazyVerticalGrid(GridCells.Adaptive(cardW), mod, state = gs, contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -92,30 +100,8 @@ fun VodBrowser(m: AppModel, series: Boolean) {
     if (m.isTv) {
         // Nouveau visuel TV : image + titre de l'affiche sélectionnée en haut, catégories en pilules, affiches dessous
         Box(Modifier.fillMaxSize()) {
-            val h = hdr
             val sh = screenHeightDp()
-            Box(Modifier.fillMaxWidth().height(sh * 0.40f)) {
-                if (h != null) {
-                    androidx.compose.animation.Crossfade(targetState = h, animationSpec = androidx.compose.animation.core.tween(500), label = "vodHdr") { x ->
-                        val art = rememberTmdbArt(if (series) "tv" else "movie", x.first)
-                        val img = art?.backdrop?.ifBlank { null } ?: x.second
-                        if (img.isNotBlank()) AsyncImage(model = img, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                    }
-                }
-                Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.horizontalGradient(0f to Color(0xF2000000), 0.45f to Color(0xA6000000), 0.85f to Color.Transparent)))
-                Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(0.35f to Color.Transparent, 1f to C.Bg)))
-                if (h != null) Column(Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = 18.dp).fillMaxWidth(0.55f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CinemaTitle(h.first, 30.sp, maxLines = 1)
-                    MetaLine(
-                        listOfNotNull(
-                            com.lumo.tv.data.TmdbArt.split(h.first).second.ifBlank { null },
-                            if (series) "Série" else "Film",
-                            h.third.toDoubleOrNull()?.takeIf { it > 0 }?.let { "★ %.1f".format(it) }
-                        ),
-                        versionBadges(h.first)
-                    )
-                }
-            }
+            VodHeader(hdrState, series, sh * 0.40f)
             Column(Modifier.fillMaxSize().padding(top = sh * 0.40f)) {
                 LazyRow(contentPadding = PaddingValues(horizontal = 44.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(cats, key = { it.id }) { c ->
@@ -152,6 +138,41 @@ fun VodBrowser(m: AppModel, series: Boolean) {
             LazyRow(Modifier.fillMaxWidth().background(Color(0xFF0E0E0E)), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(cats, key = { it.id }) { c -> Chip(c.name, sel == c.id) { sel = c.id } }
             }
+        }
+    }
+}
+
+/** En-tête « cinéma » des Films/Séries sur TV. Attend que la sélection se pose (défilement rapide = pas de rechargement d'image à chaque appui). */
+@Composable
+private fun VodHeader(src: State<Triple<String, String, String>?>, series: Boolean, height: androidx.compose.ui.unit.Dp) {
+    var shown by remember { mutableStateOf(src.value) }
+    LaunchedEffect(Unit) {
+        snapshotFlow { src.value }.collectLatest { v ->
+            if (shown != null && v != null) kotlinx.coroutines.delay(350)
+            shown = v
+        }
+    }
+    val h = shown
+    Box(Modifier.fillMaxWidth().height(height)) {
+        if (h != null) {
+            androidx.compose.animation.Crossfade(targetState = h, animationSpec = androidx.compose.animation.core.tween(300), label = "vodHdr") { x ->
+                val art = rememberTmdbArt(if (series) "tv" else "movie", x.first)
+                val img = art?.backdrop?.ifBlank { null } ?: x.second
+                if (img.isNotBlank()) AsyncImage(model = img, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            }
+        }
+        Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.horizontalGradient(0f to Color(0xF2000000), 0.45f to Color(0xA6000000), 0.85f to Color.Transparent)))
+        Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(0.35f to Color.Transparent, 1f to C.Bg)))
+        if (h != null) Column(Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = 18.dp).fillMaxWidth(0.55f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            CinemaTitle(h.first, 30.sp, maxLines = 1)
+            MetaLine(
+                listOfNotNull(
+                    com.lumo.tv.data.TmdbArt.split(h.first).second.ifBlank { null },
+                    if (series) "Série" else "Film",
+                    h.third.toDoubleOrNull()?.takeIf { it > 0 }?.let { "★ %.1f".format(it) }
+                ),
+                versionBadges(h.first)
+            )
         }
     }
 }

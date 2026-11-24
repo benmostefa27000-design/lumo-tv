@@ -426,14 +426,16 @@ class AppModel(private val context: Context) {
     val tmdbKey: String get() { store.version; return store.tmdbKey() }
     fun setTmdbKey(k: String) { commit(store.setTmdbKey(k)) }
 
+    // Clé de tri calculée une seule fois par chaîne (avant : recalculée à chaque comparaison → lent sur TV)
     fun sortLive(list: List<LiveStream>, mode: String): List<LiveStream> = when (mode) {
-        "az" -> list.sortedBy { norm(it.name.substringAfter('|').trim()) }
+        "az" -> list.map { it to norm(it.name.substringAfter('|').trim()) }.sortedBy { it.second }.map { it.first }
         "num" -> list.sortedBy { if (it.num > 0) it.num else Int.MAX_VALUE }
         "watched" -> {
             val w = store.watchCounts(pid)
-            list.sortedWith(compareByDescending<LiveStream> { w[it.id] ?: 0 }.thenBy { tntRank(it) })
+            list.map { Triple(it, w[it.id] ?: 0, tntRank(it)) }
+                .sortedWith(compareByDescending<Triple<LiveStream, Int, Int>> { it.second }.thenBy { it.third }).map { it.first }
         }
-        else -> list.sortedBy { tntRank(it) }
+        else -> list.map { it to tntRank(it) }.sortedBy { it.second }.map { it.first }
     }
 
     // ---------- Profil courant ----------

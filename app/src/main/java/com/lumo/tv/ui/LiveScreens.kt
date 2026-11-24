@@ -89,15 +89,21 @@ fun LiveScreen(m: AppModel) {
     var favShown by remember(sel) { mutableStateOf(favs.toSet()) }
     LaunchedEffect(favs) { if (sel == FAV) favShown = favShown + favs }
     val autos = run { m.store.version; m.store.favs(m.pid, "auto") }
-    val list = remember(sel, m.live, visibleIds, favShown, sortMode, autos) {
-        val raw = when (sel) {
-            FAV -> m.live.filter { it.id in favShown }
-            AUTO -> m.live.filter { it.id in autos }
-            ALL -> m.live.filter { it.catId in visibleIds }
-            REPLAY -> m.live.filter { it.archive && it.catId in visibleIds }
-            else -> m.live.filter { it.catId == sel }
+    // Tri des chaînes en arrière-plan (des milliers de chaînes : l'écran ne se fige plus en changeant de catégorie)
+    fun chans(all: List<com.lumo.tv.data.LiveStream>, s0: String, fs: Set<String>, au: Set<String>, vis: Set<String>, mode: String): List<com.lumo.tv.data.LiveStream> {
+        val raw = when (s0) {
+            FAV -> all.filter { it.id in fs }
+            AUTO -> all.filter { it.id in au }
+            ALL -> all.filter { it.catId in vis }
+            REPLAY -> all.filter { it.archive && it.catId in vis }
+            else -> all.filter { it.catId == s0 }
         }
-        m.sortLive(raw, sortMode)
+        return m.sortLive(raw, mode)
+    }
+    // 1re ouverture : tout de suite (la position revient) ; ensuite en arrière-plan
+    val list by produceState(initialValue = remember { chans(m.live, sel, favShown, autos.toSet(), visibleIds, sortMode) }, sel, m.live, visibleIds, favShown, sortMode, autos) {
+        val all = m.live; val s0 = sel; val fs = favShown; val au = autos.toSet(); val vis = visibleIds; val mode = sortMode
+        value = withContext(Dispatchers.Default) { chans(all, s0, fs, au, vis, mode) }
     }
     val sortLabels = linkedMapOf("tnt" to "Ordre TNT", "watched" to "Plus regardées", "az" to "A-Z", "num" to "Numéro")
     val nextSort = { val keys = sortLabels.keys.toList(); m.setLiveSort(keys[(keys.indexOf(sortMode) + 1) % keys.size]) }

@@ -60,6 +60,27 @@ import com.lumo.tv.data.VodInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/** Listes de l'accueil, calculées une fois en arrière-plan (et gardées au retour sur l'accueil). */
+private class HomeData(
+    val src: List<Vod>, val srcSer: List<Series>, val vodOk: Set<String>, val serOk: Set<String>,
+    val vods: List<Vod>, val recentVods: List<Vod>, val recentSeries: List<Series>,
+    val vodsById: Map<String, Vod>, val seriesById: Map<String, Series>
+)
+private var homeCache: HomeData? = null
+
+private fun buildHome(m: AppModel, allV: List<Vod>, allS: List<Series>, vodCats: List<com.lumo.tv.data.Category>, vodOk: Set<String>, serOk: Set<String>): HomeData {
+    val vods = allV.filter { it.catId in vodOk }
+    val series = allS.filter { it.catId in serOk }
+    // Grande affiche et « Nouveautés » : films français en priorité
+    val fr = Regex("(^|[^a-z])(fr|vf|vff|vfq|french|france|fran[cç]ais)([^a-z]|$)", RegexOption.IGNORE_CASE)
+    val frCats = vodCats.filter { fr.containsMatchIn(it.name) }.map { it.id }.toSet()
+    val frenchRecent = vods.filter { it.catId in frCats || it.name.trim().startsWith("FR", ignoreCase = true) }
+        .sortedByDescending { it.added }.take(200).let { m.dedupeFilms(it) }.take(60)
+    val recentVods = frenchRecent.ifEmpty { vods.sortedByDescending { it.added }.take(200).let { m.dedupeFilms(it) }.take(60) }
+    val recentSeries = series.sortedByDescending { it.modified }.take(40)
+    return HomeData(allV, allS, vodOk, serOk, vods, recentVods, recentSeries, allV.associateBy { it.id }, allS.associateBy { it.id })
+}
+
 @Composable
 fun HomeScreen(m: AppModel) {
     if (m.loading && m.vods.isEmpty() && m.series.isEmpty()) { Loading("Chargement du catalogue…"); return }
@@ -74,26 +95,23 @@ fun HomeScreen(m: AppModel) {
     val cardW = if (m.isTv) 140.dp else 108.dp
     val vodOk = m.allowedCatIds("vod")
     val serOk = m.allowedCatIds("series")
-    val vods = remember(m.vods, vodOk) { m.vods.filter { it.catId in vodOk } }
-    val series = remember(m.series, serOk) { m.series.filter { it.catId in serOk } }
+    // Gros calculs sur tout le catalogue (tri, regroupements) : en arrière-plan, jamais sur l'écran (sinon la TV rame)
+    val hd by produceState(initialValue = homeCache?.takeIf { it.src === m.vods && it.srcSer === m.series && it.vodOk == vodOk && it.serOk == serOk }, m.vods, m.series, vodOk, serOk, m.vodCats) {
+        val srcV = m.vods; val srcS = m.series; val cats = m.vodCats
+        // Déjà à jour ? (sinon on garde l'ancien affichage pendant le recalcul : pas d'écran vide)
+        if (value?.let { it.src === srcV && it.srcSer === srcS && it.vodOk == vodOk && it.serOk == serOk } == true) return@produceState
+        value = withContext(Dispatchers.Default) { buildHome(m, srcV, srcS, cats, vodOk, serOk) }.also { homeCache = it }
+    }
+    val h = hd ?: run { Loading("Chargement…"); return }
+    val vods = h.vods
+    val recentVods = h.recentVods
+    val recentSeries = h.recentSeries
+    val vodsById = h.vodsById
+    val seriesById = h.seriesById
     val favLive = run { m.store.version; m.store.favs(m.pid, "live") }
     val liveOk = m.allowedCatIds("live")
     val sortMode = m.liveSort
     val myChannels = remember(m.live, favLive, liveOk, sortMode) { m.sortLive(m.live.filter { it.id in favLive && it.catId in liveOk }, sortMode) }
-    // Grande affiche et « Nouveautés » : films français en priorité
-    val frCats = remember(m.vodCats) {
-        val fr = Regex("(^|[^a-z])(fr|vf|vff|vfq|french|france|fran[cç]ais)([^a-z]|$)", RegexOption.IGNORE_CASE)
-        m.vodCats.filter { fr.containsMatchIn(it.name) }.map { it.id }.toSet()
-    }
-    val frenchRecent = remember(vods, frCats) {
-        vods.filter { it.catId in frCats || it.name.trim().startsWith("FR", ignoreCase = true) }.sortedByDescending { it.added }.take(200).let { m.dedupeFilms(it) }.take(60)
-    }
-    val recentVods = remember(vods, frenchRecent) { frenchRecent.ifEmpty { vods.sortedByDescending { it.added }.take(200).let { m.dedupeFilms(it) }.take(60) } }
-    val recentSeries = remember(series) { series.sortedByDescending { it.modified }.take(40) }
-    val vodsById = remember(m.vods) { m.vods.associateBy { it.id } }
-    val seriesById = remember(m.series) { m.series.associateBy { it.id } }
-    val byCat = remember(vods) { vods.groupBy { it.catId } }
-    val serByCat = remember(series) { series.groupBy { it.catId } }
     // Un seul élément par film (même titre) et par série (dernier épisode regardé)
     // Seulement ce qui existe dans la source en cours (une reprise d'une autre source ne marcherait pas ici)
     val progress = m.progressList().filter { !it.finished }
@@ -110,7 +128,8 @@ fun HomeScreen(m: AppModel) {
     val heroOk = heroList.filter { it.id !in badHero }.ifEmpty { heroList }
     var heroIdx by remember(heroList) { mutableIntStateOf(0) }
     var heroFocused by remember { mutableStateOf(false) }
-    val hero = heroOk.getOrNull(heroIdx % heroOk.size.coerceAtLeast(1))
+    // Lu seulement dans le bandeau : le changement d'affiche (toutes les 8 s) ne redessine pas tout l'accueil
+    fun heroNow() = heroOk.getOrNull(heroIdx % heroOk.size.coerceAtLeast(1))
     var heroDir by remember { mutableIntStateOf(1) }
     var heroTick by remember { mutableIntStateOf(0) }
     // Le minuteur repart de zéro après un glissement au doigt
@@ -191,7 +210,8 @@ fun HomeScreen(m: AppModel) {
     ) {
         // Haut de l'accueil classique : grande affiche du film en fondu enchaîné (retour à la version d'avant l'effet iPad)
         // TV : bandeau façon Fire TV (image à droite, texte et boutons à gauche)
-        if (hero != null && m.isTv) item(key = "firehero") {
+        if (heroOk.isNotEmpty() && m.isTv) item(key = "firehero") {
+            val hero = heroNow() ?: return@item
             Box(Modifier.onFocusChanged { heroFocused = it.hasFocus; heroFocusNow.set(it.hasFocus); if (it.hasFocus) listScope.launch { listState.animateScrollToItem(0) } }) {
                 FireHero(m, hero, heroOk.size, heroIdx % heroOk.size.coerceAtLeast(1),
                     onStep = { d -> heroIdx = ((heroIdx + d) % heroOk.size + heroOk.size) % heroOk.size },
@@ -199,7 +219,8 @@ fun HomeScreen(m: AppModel) {
                     onNoImage = { if (hero.id !in badHero) badHero.add(hero.id) })
             }
         }
-        else if (hero != null) item {
+        else if (heroOk.isNotEmpty()) item {
+            val hero = heroNow() ?: return@item
             // Téléphone : défile tout seul, et on peut aussi faire glisser avec le doigt (gauche = suivant, droite = précédent)
             var dragX by remember { mutableFloatStateOf(0f) }
             Box(Modifier.onFocusChanged { heroFocused = it.hasFocus }.pointerInput(heroOk.size) {
