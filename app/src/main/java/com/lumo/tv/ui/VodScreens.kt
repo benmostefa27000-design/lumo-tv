@@ -67,11 +67,15 @@ fun VodBrowser(m: AppModel, series: Boolean) {
         } else {
             // Calcul en arrière-plan (grosses catégories) : l'écran ne se fige pas
             // (gardée en mémoire : au retour d'une fiche, la liste et la position sont là tout de suite)
-            val list by produceState(initialValue = m.filmListCache[sel]?.takeIf { it.first === m.vods }?.second ?: emptyList(), sel, m.vods) {
-                if (value.isNotEmpty()) return@produceState
-                val l = withContext(Dispatchers.Default) { m.dedupeFilms(m.vods.filter { it.catId == sel }.sortedByDescending { it.added }) }
-                m.filmListCache[sel] = m.vods to l
-                value = l
+            // key(sel) : chaque catégorie a sa propre liste (sinon l'ancienne restait affichée)
+            val list = key(sel, m.vods) {
+                val cat = sel; val vods = m.vods
+                produceState(initialValue = m.filmListCache[cat]?.takeIf { it.first === vods }?.second ?: emptyList(), cat, vods) {
+                    if (value.isNotEmpty()) return@produceState
+                    val l = withContext(Dispatchers.Default) { m.dedupeFilms(vods.filter { it.catId == cat }.sortedByDescending { it.added }) }
+                    m.filmListCache[cat] = vods to l
+                    value = l
+                }.value
             }
             LaunchedEffect(list) { if (m.isTv && hdr == null) list.firstOrNull()?.let { hdr = Triple(it.name, it.icon, it.rating) } }
             val gs = rememberSavedGrid(m, "vod|$sel")
