@@ -71,7 +71,7 @@ android {
 }
 
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
+    val composeBom = platform("androidx.compose:compose-bom:2025.06.00")
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
@@ -91,4 +91,6 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("com.google.zxing:core:3.5.3")
     implementation("androidx.tvprovider:tvprovider:1.0.0")
+    // Profil de démarrage : Android précompile l'interface → plus fluide dès les premières utilisations
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
 }

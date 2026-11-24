@@ -836,9 +836,19 @@ class AppModel(private val context: Context) {
     fun warmSearch() { if (!isTv) scope.launch { search("zz") } }
 
     /** Envoie le rapport du dernier plantage (aucune donnée perso : appareil, version, erreur). */
+    /** Résumé du dernier plantage, affiché au démarrage (à prendre en photo). */
+    var crashText by mutableStateOf<String?>(null)
+
     private fun sendPendingCrash() {
         val txt = Crash.pending(context) ?: return
-        if (!sync.enabled) return
+        crashText = try {
+            val lines = txt.lines()
+            val head = lines.take(2)
+            val err = lines.drop(2).filter { it.isNotBlank() }
+            val key = err.filter { l -> !l.trimStart().startsWith("at ") || l.contains("com.lumo") }.take(14)
+            (head + "" + key).joinToString("\n").take(1800)
+        } catch (_: Exception) { txt.take(1500) }
+        if (!sync.enabled) { Crash.clear(context); return }
         scope.launch(Dispatchers.IO) {
             try {
                 sync.put("crash/${store.deviceId}-${System.currentTimeMillis()}", JSONObject().put("report", txt))

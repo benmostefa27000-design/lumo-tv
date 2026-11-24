@@ -32,6 +32,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -105,6 +107,24 @@ fun LumoApp(m: AppModel) {
                     text = { Text("Retirer « ${com.lumo.tv.data.TmdbArt.split(p.title).first.ifBlank { p.title }} » de la liste ?", color = C.Sub) },
                     confirmButton = { TextButton(modifier = guard.focusRequester(retirerFr), onClick = { m.removeFromContinue(p); m.removeAsk = null }) { Text("Retirer", color = C.Red) } },
                     dismissButton = { TextButton(modifier = guard, onClick = { m.removeAsk = null }) { Text("Annuler", color = C.Sub) } }
+                )
+            }
+
+            m.crashText?.let { t ->
+                val okFr = remember { FocusRequester() }
+                LaunchedEffect(t) { kotlinx.coroutines.delay(300); try { okFr.requestFocus() } catch (_: Exception) { } }
+                AlertDialog(
+                    onDismissRequest = { m.crashText = null },
+                    containerColor = C.Card,
+                    title = { Text("Lumo s'est arrêté la dernière fois", color = Color.White) },
+                    text = {
+                        Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                            Text("Prends cet écran en photo et envoie-la à Claude :", color = C.Sub, fontSize = 13.sp)
+                            Spacer(Modifier.height(8.dp))
+                            Text(t, color = Color.White, fontSize = 11.sp, lineHeight = 14.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                        }
+                    },
+                    confirmButton = { TextButton(modifier = Modifier.focusRequester(okFr), onClick = { m.crashText = null }) { Text("OK", color = C.Red) } }
                 )
             }
 
