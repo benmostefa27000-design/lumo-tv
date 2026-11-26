@@ -147,6 +147,13 @@ fun SettingsScreen(m: AppModel) {
             SettingRow("Sources", (if (cur != null) "En cours : $cur" else "Ton abonnement") + if (n > 1) " · $n sources" else " · ajouter un autre abonnement") { m.go(Screen.Sources) }
         }
         item { SettingRow("Gérer les catégories", "Tout sélectionner, supprimer, restaurer") { m.go(Screen.Categories) } }
+        item {
+            val st = run { m.store.version; m.store.uiStyle }
+            val name = when (st) { "night" -> "Verre nuit"; "amber" -> "Verre ambré"; else -> "Classique" }
+            SettingRow("Style d'affichage", "$name · appuie pour changer (Classique → Verre nuit → Verre ambré)") {
+                m.store.uiStyle = when (st) { "classic" -> "night"; "night" -> "amber"; else -> "classic" }
+            }
+        }
         if (m.isTv) item {
             SettingRow("Fréquence d'image adaptée", if (m.store.matchFrameRate) "Activée · 50 Hz pour la TV, 24 Hz pour les films (image plus fluide)" else "Désactivée") {
                 m.store.matchFrameRate = !m.store.matchFrameRate

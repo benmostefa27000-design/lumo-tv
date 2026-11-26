@@ -602,7 +602,7 @@ private fun FireHero(m: AppModel, v: Vod, count: Int, index: Int, onStep: (Int) 
         Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to bg.copy(alpha = 0.95f), 0.38f to bg.copy(alpha = 0.7f), 0.75f to Color.Transparent)))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to bg)))
         Column(
-            Modifier.align(Alignment.CenterStart).fillMaxWidth(0.5f).padding(start = 48.dp, top = 40.dp),
+            Modifier.align(Alignment.CenterStart).fillMaxWidth(0.5f).padding(start = LocalPad.current, top = 40.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             androidx.compose.animation.AnimatedContent(targetState = v, label = "cineTxt", transitionSpec = {

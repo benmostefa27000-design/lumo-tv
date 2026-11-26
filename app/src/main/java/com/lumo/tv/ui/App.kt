@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.ui.focus.focusRequester
 
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 
 import androidx.compose.ui.input.key.type
 
@@ -54,8 +55,12 @@ import com.lumo.tv.player.PlayerScreen
 @Composable
 fun LumoApp(m: AppModel) {
     LaunchedEffect(m.tmdbKey) { com.lumo.tv.data.TmdbArt.key = m.tmdbKey }
+    // Style d'affichage (Réglages) : tout l'écran est redessiné quand on en change
+    val style = run { m.store.version; m.store.uiStyle }
+    C.style = style
+    androidx.compose.runtime.key(style) {
     LumoTheme {
-        Box(Modifier.fillMaxSize().background(C.Bg)) {
+        Box(Modifier.fillMaxSize().glassBackground(glassOf(style))) {
             BackHandler(enabled = m.stack.size > 1 || (m.current == Screen.Main && m.tab != Tab.Home)) {
                 if (!m.back() && m.current == Screen.Main) m.tab = Tab.Home
             }
@@ -142,10 +147,14 @@ fun LumoApp(m: AppModel) {
         }
     }
 }
+}
 
 @Composable
 fun MainScreen(m: AppModel) {
-    if (m.isTv) {
+    val glass = glassOf(C.style)
+    if (m.isTv && glass != null) {
+        TvGlassMain(m, glass)
+    } else if (m.isTv) {
         // TV : la barre du haut flotte par-dessus le contenu (l'accueil passe dessous, en plein écran)
         Box(Modifier.fillMaxSize()) {
             // Accueil, Films et Séries passent sous la barre (image en plein écran) ; les autres onglets commencent dessous
@@ -189,8 +198,116 @@ fun MainScreen(m: AppModel) {
 }
 
 @Composable
-private fun TabContent(m: AppModel) {
-    CompositionLocalProvider(LocalPad provides if (m.isTv) 48.dp else 16.dp) { TabBody(m) }
+private fun TabContent(m: AppModel, tvPad: androidx.compose.ui.unit.Dp = 48.dp) {
+    CompositionLocalProvider(LocalPad provides if (m.isTv) tvPad else 16.dp) { TabBody(m) }
+}
+
+private const val RAIL = 92   // largeur de la barre latérale repliée (dp)
+
+/** TV, style verre : barre latérale translucide à gauche ; l'onglet actif = pilule blanche prolongée par un bandeau vertical. */
+@Composable
+private fun TvGlassMain(m: AppModel, g: Glass) {
+    val contentFr = remember { FocusRequester() }
+    val railFr = remember { FocusRequester() }
+    var railFocused by remember { mutableStateOf(false) }
+    // Accueil, Films, Séries : l'image passe sous la barre (effet verre) ; ailleurs le contenu commence à droite de la barre
+    val fullBleed = m.tab == Tab.Home || m.tab == Tab.Movies || m.tab == Tab.Series
+    // Retour : d'abord revenir sur la barre latérale (comme Netflix), puis le comportement habituel
+    BackHandler(enabled = !railFocused) { try { railFr.requestFocus() } catch (_: Exception) { } }
+    Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier.fillMaxSize().padding(start = if (fullBleed) 0.dp else (RAIL + 16).dp, top = if (fullBleed) 0.dp else 20.dp)
+                .focusRequester(contentFr).focusGroup()
+        ) { TabContent(m, tvPad = if (fullBleed) (RAIL + 40).dp else 32.dp) }
+        // Heure en haut à droite
+        Box(Modifier.align(Alignment.TopEnd).padding(top = 18.dp, end = 32.dp)
+            .background(Color(0x33000000), RoundedCornerShape(50)).padding(horizontal = 12.dp, vertical = 4.dp)) { TvClock() }
+        Box(
+            Modifier.padding(start = 14.dp, top = 14.dp, bottom = 14.dp).fillMaxHeight()
+                .onFocusChanged { railFocused = it.hasFocus }
+                .onPreviewKeyEvent { e ->
+                    if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && e.key == androidx.compose.ui.input.key.Key.DirectionRight) {
+                        val ok = m.tvEntry?.let { try { it.requestFocus(); true } catch (_: Exception) { false } } ?: false
+                        if (!ok) try { contentFr.requestFocus() } catch (_: Exception) { }
+                        true
+                    } else false
+                }
+        ) { GlassRail(m, g, expanded = railFocused, railFr = railFr) }
+    }
+}
+
+@Composable
+private fun GlassRail(m: AppModel, g: Glass, expanded: Boolean, railFr: FocusRequester) {
+    val shape = RoundedCornerShape(24.dp)
+    val w by androidx.compose.animation.core.animateDpAsState(if (expanded) 250.dp else RAIL.dp, androidx.compose.animation.core.tween(220), label = "railW")
+    val tabs = listOf(Tab.Home, Tab.Live, Tab.Movies, Tab.Series, Tab.MyList)
+    // Au démarrage : sélection sur l'onglet actif
+    LaunchedEffect(Unit) { kotlinx.coroutines.delay(150); try { railFr.requestFocus() } catch (_: Exception) { } }
+    Row(Modifier.width(w).fillMaxHeight().glassPanel(g, shape, strong = expanded).clip(shape)) {
+        Column(Modifier.weight(1f).fillMaxHeight().padding(start = 10.dp, top = 14.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            // Logo + nom
+            Row(Modifier.padding(start = 4.dp, bottom = 6.dp).height(40.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(36.dp).background(Color(0x33FFFFFF), androidx.compose.foundation.shape.CircleShape).border(1.dp, g.edge, androidx.compose.foundation.shape.CircleShape), contentAlignment = Alignment.Center) {
+                    Text("L", color = C.Red, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
+                if (expanded) { Spacer(Modifier.width(10.dp)); LumoLogo(20) }
+            }
+            RailItem(g, expanded, active = false, label = "Rechercher", onClick = { m.go(Screen.Search) }) { c -> Icon(Icons.Default.Search, null, tint = c, modifier = Modifier.size(22.dp)) }
+            tabs.forEach { t ->
+                val active = m.tab == t
+                RailItem(g, expanded, active = active, label = if (t == Tab.Live) "Direct" else t.label,
+                    railFr = if (active) railFr else null,
+                    onFocus = { if (m.tab != t) { kotlinx.coroutines.delay(220); m.tab = t } }, onClick = { m.tab = t }) { c ->
+                    androidx.compose.foundation.Canvas(Modifier.size(22.dp)) { drawTab(t, c) }
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            RailItem(g, expanded, active = false, label = "Recherche vocale", onClick = { m.openSearch(voice = true) }) { _ -> Text("🎤", fontSize = 18.sp) }
+            RailItem(g, expanded, active = m.tab == Tab.Settings, label = "Réglages", railFr = if (m.tab == Tab.Settings) railFr else null,
+                onClick = { m.tab = Tab.Settings }) { c -> Icon(Icons.Default.Settings, null, tint = c, modifier = Modifier.size(22.dp)) }
+            m.profile?.let { p ->
+                RailItem(g, expanded, active = false, label = p.name, onClick = { m.openProfiles() }) { _ -> ProfileAvatar(p.name, p.color, p.photo, 30.dp) }
+            }
+        }
+        // Bandeau blanc vertical avec le nom de la rubrique
+        Box(Modifier.width(24.dp).fillMaxHeight().background(Color.White), contentAlignment = Alignment.BottomCenter) {
+            Text(
+                (if (m.tab == Tab.Live) "DIRECT" else m.tab.label.uppercase()),
+                color = g.stripText, fontSize = 11.sp, letterSpacing = 3.sp, maxLines = 1, softWrap = false,
+                modifier = Modifier.padding(bottom = 20.dp).verticalText()
+            )
+        }
+    }
+}
+
+@Composable
+private fun RailItem(
+    g: Glass, expanded: Boolean, active: Boolean, label: String,
+    requester: FocusRequester? = null, railFr: FocusRequester? = null,
+    onFocus: (suspend () -> Unit)? = null, onClick: () -> Unit,
+    icon: @Composable (Color) -> Unit
+) {
+    // Élément actif : pilule blanche collée au bandeau (pas de marge à droite) ; les autres : petite pilule de verre
+    val pill = if (active) RoundedCornerShape(topStart = 50.dp, bottomStart = 50.dp) else RoundedCornerShape(50)
+    val rf = railFr ?: requester
+    FocusBox(
+        modifier = Modifier.fillMaxWidth().padding(end = if (active) 0.dp else 10.dp),
+        shape = pill, scale = if (active) 1f else 1.05f, border = false, requester = rf, onClick = onClick
+    ) { f ->
+        if (onFocus != null) LaunchedEffect(f) { if (f) onFocus() }
+        val bg = when { active -> Color.White; f -> Color(0x59FFFFFF); else -> g.item }
+        val fg = when { active -> g.onPill; else -> Color.White }
+        Row(
+            Modifier.fillMaxWidth().height(46.dp).background(bg, pill)
+                .then(if (f && !active) Modifier.border(1.5.dp, Color(0xCCFFFFFF), pill) else Modifier)
+                .then(if (f && active) Modifier.border(2.dp, g.glow, pill) else Modifier)
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) { icon(fg) }
+            if (expanded) Text(label, color = fg, fontSize = 15.sp, fontWeight = if (active) FontWeight.Bold else FontWeight.Medium, maxLines = 1, softWrap = false)
+        }
+    }
 }
 
 @Composable
@@ -422,22 +539,26 @@ private fun PhoneBottomBar(m: AppModel) {
         Triple(Tab.Series, Icons.Default.List, "Séries"),
         Triple(Tab.Settings, Icons.Default.Settings, "Réglages")
     )
-    // Nouveau visuel : barre du bas en « pilule » translucide
-    Box(Modifier.fillMaxWidth().background(Color.Black).padding(horizontal = 14.dp, vertical = 8.dp)) {
+    val g = glassOf(C.style)
+    // Barre du bas en « pilule » ; style verre : panneau translucide + onglet actif en pilule blanche
+    Box(Modifier.fillMaxWidth().background(C.Bg).padding(horizontal = 14.dp, vertical = 8.dp)) {
         Row(
-            Modifier.fillMaxWidth().height(64.dp).background(Color(0xFF16171C), RoundedCornerShape(50))
-                .border(0.5.dp, Color(0x33FFFFFF), RoundedCornerShape(50)).padding(horizontal = 6.dp),
+            Modifier.fillMaxWidth().height(64.dp)
+                .then(if (g != null) Modifier.glassPanel(g, RoundedCornerShape(50)) else Modifier.background(Color(0xFF16171C), RoundedCornerShape(50)).border(0.5.dp, Color(0x33FFFFFF), RoundedCornerShape(50)))
+                .padding(horizontal = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             items.forEach { (t, icon, label) ->
                 val sel = m.tab == t
+                val selBg = if (g != null) Color.White else Color(0x26FFFFFF)
+                val fg = when { sel && g != null -> g.onPill; sel -> Color.White; g != null -> g.dim; else -> C.Dim }
                 Column(
-                    Modifier.weight(1f).fillMaxHeight().padding(vertical = 6.dp).clip(RoundedCornerShape(50))
-                        .background(if (sel) Color(0x26FFFFFF) else Color.Transparent).clickable { m.tab = t },
+                    Modifier.weight(1f).fillMaxHeight().padding(vertical = 6.dp, horizontal = 2.dp).clip(RoundedCornerShape(50))
+                        .background(if (sel) selBg else Color.Transparent).clickable { m.tab = t },
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
                 ) {
-                    Icon(icon, contentDescription = label, tint = if (sel) Color.White else C.Dim, modifier = Modifier.size(22.dp))
-                    Text(label, fontSize = 10.sp, color = if (sel) Color.White else C.Dim, maxLines = 1)
+                    Icon(icon, contentDescription = label, tint = fg, modifier = Modifier.size(22.dp))
+                    Text(label, fontSize = 10.sp, color = fg, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
                 }
             }
         }

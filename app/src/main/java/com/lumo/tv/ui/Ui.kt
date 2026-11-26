@@ -1,5 +1,9 @@
 package com.lumo.tv.ui
 
+import androidx.compose.ui.layout.layout
+
+import androidx.compose.ui.draw.rotate
+
 import androidx.compose.ui.input.key.type
 
 import androidx.compose.ui.input.key.key
@@ -35,9 +39,11 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 
 object C {
+    /** Style d'affichage courant (fixé à la racine de l'app, voir LumoApp). */
+    var style: String = "classic"
     val Red = Color(0xFFE11D2E)
-    val Bg = Color(0xFF000000)
-    val Card = Color(0xFF141414)
+    val Bg: Color get() = when (style) { "night" -> Color(0xFF060B1A); "amber" -> Color(0xFF130B09); else -> Color(0xFF000000) }
+    val Card: Color get() = when (style) { "night" -> Color(0xFF101A33); "amber" -> Color(0xFF26170F); else -> Color(0xFF141414) }
     val Card2 = Color(0xFF2A2A2A)
     val Text = Color(0xFFFFFFFF)
     val Sub = Color(0xFFB3B3B3)
@@ -375,4 +381,39 @@ fun TrailerButton(kind: String, raw: String, providerKey: String? = null) {
         val web = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/watch?v=$key")).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
         try { ctx.startActivity(app) } catch (_: Exception) { try { ctx.startActivity(web) } catch (_: Exception) { } }
     }
+}
+
+
+/** Couleurs du style « verre » (null = style classique). Verre simulé : pas de flou réel, pour rester fluide sur TV. */
+class Glass(
+    val glow: Color,          // lueur du fond
+    val panelTop: Color,      // haut du panneau translucide
+    val panelBottom: Color,   // bas du panneau
+    val edge: Color,          // bordure lumineuse
+    val item: Color,          // fond d'un élément non sélectionné
+    val dim: Color,           // texte secondaire
+    val onPill: Color,        // texte/icône sur la pilule blanche
+    val stripText: Color      // texte vertical du bandeau blanc
+)
+
+fun glassOf(style: String): Glass? = when (style) {
+    "night" -> Glass(Color(0xFF1F3C7A), Color(0x5A6E96F0), Color(0xA0101A38), Color(0x40FFFFFF), Color(0x1FFFFFFF), Color(0xFFC8D3EE), Color(0xFF0B1530), Color(0xFF7F8DB0))
+    "amber" -> Glass(Color(0xFF6E3A28), Color(0x66E0A08A), Color(0xA6402018), Color(0x45FFFFFF), Color(0x22FFFFFF), Color(0xFFF3DCD2), Color(0xFF4A1B0C), Color(0xFFB0806E))
+    else -> null
+}
+
+/** Fond de l'app en style verre : une lueur colorée en haut, puis la couleur de fond. */
+fun Modifier.glassBackground(g: Glass?): Modifier = if (g == null) this.background(C.Bg) else this.background(C.Bg).background(
+    androidx.compose.ui.graphics.Brush.radialGradient(listOf(g.glow, Color.Transparent), center = androidx.compose.ui.geometry.Offset(1400f, -200f), radius = 1600f)
+)
+
+/** Panneau en verre : dégradé translucide + bordure lumineuse. */
+fun Modifier.glassPanel(g: Glass, shape: Shape, strong: Boolean = false): Modifier = this
+    .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(if (strong) g.panelTop.copy(alpha = (g.panelTop.alpha + 0.25f).coerceAtMost(1f)) else g.panelTop, if (strong) g.panelBottom.copy(alpha = 0.92f) else g.panelBottom)), shape)
+    .border(1.dp, androidx.compose.ui.graphics.Brush.verticalGradient(listOf(g.edge, g.edge.copy(alpha = 0.08f))), shape)
+
+/** Texte écrit à la verticale (de bas en haut). */
+fun Modifier.verticalText(): Modifier = this.rotate(-90f).layout { measurable, _ ->
+    val p = measurable.measure(androidx.compose.ui.unit.Constraints())
+    layout(p.height, p.width) { p.place((p.height - p.width) / 2, (p.width - p.height) / 2) }
 }

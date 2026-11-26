@@ -83,6 +83,11 @@ class Store(context: Context) {
         get() = try { Account.fromJson(JSONObject(prefs.getString("account", "") ?: "")) } catch (e: Exception) { null }
         set(v) { prefs.edit().putString("account", v?.toJson()?.toString() ?: "").apply(); version++ }
 
+    /** Style d'affichage : "classic" (d'origine), "night" (verre bleu nuit), "amber" (verre ambré). */
+    var uiStyle: String
+        get() = prefs.getString("uiStyle", "night") ?: "night"
+        set(v) { prefs.edit().putString("uiStyle", v).apply(); version++ }
+
     /** Fréquence d'image adaptée (TV) : activée par défaut. */
     var matchFrameRate: Boolean
         get() = prefs.getBoolean("matchFps", true)

@@ -163,7 +163,7 @@ private fun VodHeader(src: State<Triple<String, String, String>?>, series: Boole
         }
         Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.horizontalGradient(0f to Color(0xF2000000), 0.45f to Color(0xA6000000), 0.85f to Color.Transparent)))
         Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(0.35f to Color.Transparent, 1f to C.Bg)))
-        if (h != null) Column(Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = 18.dp).fillMaxWidth(0.55f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (h != null) Column(Modifier.align(Alignment.BottomStart).padding(start = LocalPad.current, bottom = 18.dp).fillMaxWidth(0.55f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             CinemaTitle(h.first, 30.sp, maxLines = 1)
             MetaLine(
                 listOfNotNull(
